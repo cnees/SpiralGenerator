@@ -48,6 +48,7 @@ export const SpiralGenerator = () => {
     const steps = 100 * coils;
 
     const baseAngle = Math.atan2(dy, dx);
+    console.log("baseAngle", baseAngle);
     const growthFactor = Math.log(distance) / (2 * Math.PI * coils);
 
     for (let i = steps; i >= 0; i--) {
@@ -65,8 +66,8 @@ export const SpiralGenerator = () => {
 
   const generateSpiralPath = (outer, center, clockwise = true) => {
     const points = generateSpiralPoints(outer, center, clockwise);
-    if (points.length === 0) return '';
-    return `M ${points.map(p => `${p.x},${p.y}`).join(' L ')}`;
+    if (points.length === 0) return "";
+    return `M ${points.map((p) => `${p.x},${p.y}`).join(" L ")}`;
   };
 
   const distanceToLineSegment = (point, start, end) => {
@@ -100,34 +101,65 @@ export const SpiralGenerator = () => {
   const extendLine = (start, end, factor = 10) => {
     const dx = end.x - start.x;
     const dy = end.y - start.y;
-    
+
     const extendedStart = {
       x: start.x - dx * ((factor - 1) / 2),
-      y: start.y - dy * ((factor - 1) / 2)
+      y: start.y - dy * ((factor - 1) / 2),
     };
-    
+
     const extendedEnd = {
       x: end.x + dx * ((factor - 1) / 2),
-      y: end.y + dy * ((factor - 1) / 2)
+      y: end.y + dy * ((factor - 1) / 2),
     };
-    
+
     return { start: extendedStart, end: extendedEnd };
   };
 
   const findSnapPoint = (point, isInitialPoint = false) => {
     if (!snappingEnabled) return { point: null, spiral: null };
-    
+
     let closestDist = Infinity;
     let closestPoint = null;
     let closestSpiral = null;
 
     // If we're drawing and have a parent spiral, check extended line first
     if (isDrawing && startPoint && parentSpiral) {
+      // Check original line
       const extendedLine = extendLine(startPoint, parentSpiral.center, 100);
-      const result = distanceToLineSegment(point, extendedLine.start, extendedLine.end);
-      if (result.distance <= endpointSnapRadius) {
-        closestDist = result.distance;
-        closestPoint = result.point;
+      const result = distanceToLineSegment(
+        point,
+        extendedLine.start,
+        extendedLine.end
+      );
+
+      // Check opposite line
+      const oppositeStart = {
+        x: 2 * parentSpiral.center.x - startPoint.x,
+        y: 2 * parentSpiral.center.y - startPoint.y,
+      };
+      const oppositeExtendedLine = extendLine(
+        oppositeStart,
+        parentSpiral.center,
+        100
+      );
+      const oppositeResult = distanceToLineSegment(
+        point,
+        oppositeExtendedLine.start,
+        oppositeExtendedLine.end
+      );
+
+      // Use whichever line is closer
+      if (
+        result.distance <= endpointSnapRadius ||
+        oppositeResult.distance <= endpointSnapRadius
+      ) {
+        if (result.distance < oppositeResult.distance) {
+          closestDist = result.distance;
+          closestPoint = result.point;
+        } else {
+          closestDist = oppositeResult.distance;
+          closestPoint = oppositeResult.point;
+        }
         closestSpiral = parentSpiral;
       }
     }
@@ -150,18 +182,27 @@ export const SpiralGenerator = () => {
       checkEndpoint(spiral.outer);
       checkEndpoint(spiral.center);
 
-      // Check along the spiral
-      const spiralPoints = generateSpiralPoints(
+      // Check along the spiral using the correct spiral type
+      const spiralPoints = generateSpiralPointsByType(
         spiral.outer,
         spiral.center,
         spiral.clockwise,
-        spiral.coils || 3
+        spiral.coils || 3,
+        spiral.type || SPIRAL_TYPES.LOGARITHMIC,
+        spiral
       );
 
       // Check each segment of the spiral
       for (let i = 0; i < spiralPoints.length - 1; i++) {
-        const result = distanceToLineSegment(point, spiralPoints[i], spiralPoints[i + 1]);
-        if (result.distance <= endpointSnapRadius && result.distance < closestDist) {
+        const result = distanceToLineSegment(
+          point,
+          spiralPoints[i],
+          spiralPoints[i + 1]
+        );
+        if (
+          result.distance <= endpointSnapRadius &&
+          result.distance < closestDist
+        ) {
           closestDist = result.distance;
           closestPoint = result.point;
           closestSpiral = spiral;
@@ -169,10 +210,10 @@ export const SpiralGenerator = () => {
       }
     }
 
-    return { 
-      point: closestPoint, 
+    return {
+      point: closestPoint,
       spiral: closestSpiral,
-      distance: closestDist
+      distance: closestDist,
     };
   };
 
@@ -182,28 +223,28 @@ export const SpiralGenerator = () => {
     const dx = point.x - spiral.center.x;
     const dy = point.y - spiral.center.y;
     const pointRadius = Math.sqrt(dx * dx + dy * dy);
-    
+
     const maxDx = spiral.outer.x - spiral.center.x;
     const maxDy = spiral.outer.y - spiral.center.y;
     const maxRadius = Math.sqrt(maxDx * maxDx + maxDy * maxDy);
-    
+
     const pointAngle = Math.atan2(dy, dx);
     const baseAngle = Math.atan2(maxDy, maxDx);
-    
+
     let angleDiff = pointAngle - baseAngle;
     if (spiral.clockwise) {
       if (angleDiff > 0) angleDiff -= 2 * Math.PI;
     } else {
       if (angleDiff < 0) angleDiff += 2 * Math.PI;
     }
-    
+
     const t = Math.exp(angleDiff / (2 * Math.PI)) * (pointRadius / maxRadius);
-    
+
     return (spiral.outer.thickness || lineThickness) * t + 0.5;
   };
 
   const handleMouseDown = useCallback(
-    e => {
+    (e) => {
       const rect = e.currentTarget.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
@@ -220,7 +261,7 @@ export const SpiralGenerator = () => {
           const dx = point.x - spiral.center.x;
           const dy = point.y - spiral.center.y;
           const distance = Math.sqrt(dx * dx + dy * dy);
-          
+
           if (distance <= centerSnapRadius && distance < closestDist) {
             closestDist = distance;
             closestSpiral = spiral;
@@ -230,9 +271,14 @@ export const SpiralGenerator = () => {
           // Check outer point
           const dxOuter = point.x - spiral.outer.x;
           const dyOuter = point.y - spiral.outer.y;
-          const distanceOuter = Math.sqrt(dxOuter * dxOuter + dyOuter * dyOuter);
-          
-          if (distanceOuter <= endpointSnapRadius && distanceOuter < closestDist) {
+          const distanceOuter = Math.sqrt(
+            dxOuter * dxOuter + dyOuter * dyOuter
+          );
+
+          if (
+            distanceOuter <= endpointSnapRadius &&
+            distanceOuter < closestDist
+          ) {
             closestDist = distanceOuter;
             closestSpiral = spiral;
             closestPoint = spiral.outer;
@@ -247,8 +293,15 @@ export const SpiralGenerator = () => {
           );
 
           for (let i = 0; i < spiralPoints.length - 1; i++) {
-            const result = distanceToLineSegment(point, spiralPoints[i], spiralPoints[i + 1]);
-            if (result.distance <= endpointSnapRadius && result.distance < closestDist) {
+            const result = distanceToLineSegment(
+              point,
+              spiralPoints[i],
+              spiralPoints[i + 1]
+            );
+            if (
+              result.distance <= endpointSnapRadius &&
+              result.distance < closestDist
+            ) {
               closestDist = result.distance;
               closestSpiral = spiral;
               closestPoint = result.point;
@@ -260,25 +313,32 @@ export const SpiralGenerator = () => {
           setParentSpiral(closestSpiral);
           setStartPoint({
             ...closestPoint,
-            thickness: lineThickness
+            thickness: lineThickness,
           });
           setIsDrawing(true);
           return;
         }
       }
 
-      // If no snap point found, use raw point
+      // If no snap point found, use raw point and clear parent spiral
+      setParentSpiral(null);
       setStartPoint({
         ...point,
-        thickness: lineThickness
+        thickness: lineThickness,
       });
       setIsDrawing(true);
     },
-    [snappingEnabled, lineThickness, spirals, centerSnapRadius, endpointSnapRadius]
+    [
+      snappingEnabled,
+      lineThickness,
+      spirals,
+      centerSnapRadius,
+      endpointSnapRadius,
+    ]
   );
 
   const handleMouseMove = useCallback(
-    e => {
+    (e) => {
       const rect = e.currentTarget.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
@@ -311,46 +371,68 @@ export const SpiralGenerator = () => {
     [isDrawing, snappingEnabled]
   );
 
-  const handleMouseUp = useCallback(e => {
-    if (isDrawing && startPoint && currentPoint) {
-      setSpirals(prev => [...prev, {
-        outer: startPoint,
-        center: currentPoint,
-        clockwise: isClockwise,
-        coils: getCoilsForSize(
-          Math.sqrt(
-            Math.pow(currentPoint.x - startPoint.x, 2) + 
-            Math.pow(currentPoint.y - startPoint.y, 2)
-          )
-        ),
-        taperToCenter,
-        type: spiralType,
-        sizeRatio
-      }]);
-      setUndoStack([...undoStack, spirals]);
-      setRedoStack([]);
-    }
-    setIsDrawing(false);
-    setStartPoint(null);
-    setCurrentPoint(null);
-    setSnapPoint(null);
-    setSnappedSpiral(null);
-  }, [isDrawing, startPoint, currentPoint, isClockwise, undoStack, spirals, taperToCenter, spiralType, sizeRatio]);
+  const handleMouseUp = useCallback(
+    (e) => {
+      if (isDrawing && startPoint && currentPoint) {
+        setSpirals((prev) => [
+          ...prev,
+          {
+            outer: {
+              ...startPoint,
+              thickness: lineThickness,
+            },
+            center: currentPoint,
+            clockwise: isClockwise,
+            coils: getCoilsForSize(
+              Math.sqrt(
+                Math.pow(currentPoint.x - startPoint.x, 2) +
+                  Math.pow(currentPoint.y - startPoint.y, 2)
+              )
+            ),
+            taperToCenter,
+            type: spiralType,
+            sizeRatio,
+          },
+        ]);
+        setUndoStack([...undoStack, spirals]);
+        setRedoStack([]);
+      }
+      setIsDrawing(false);
+      setStartPoint(null);
+      setCurrentPoint(null);
+      setSnapPoint(null);
+      setSnappedSpiral(null);
+    },
+    [
+      isDrawing,
+      startPoint,
+      currentPoint,
+      isClockwise,
+      undoStack,
+      spirals,
+      taperToCenter,
+      spiralType,
+      sizeRatio,
+      lineThickness,
+    ]
+  );
 
   useEffect(() => {
     let animationFrame;
-    
+
     const updateCoils = () => {
-      if (heldKeys.has('a') || heldKeys.has('d')) {
-        setDefaultCoils(prev => {
-          const delta = heldKeys.has('d') ? COIL_ADJUST_SPEED : -COIL_ADJUST_SPEED;
+      if (heldKeys.has("a") || heldKeys.has("d")) {
+        setDefaultCoils((prev) => {
+          const delta = heldKeys.has("d")
+            ? COIL_ADJUST_SPEED
+            : -COIL_ADJUST_SPEED;
           return Math.min(MAX_COILS, Math.max(MIN_COILS, prev + delta));
         });
         animationFrame = requestAnimationFrame(updateCoils);
       }
     };
 
-    if (heldKeys.has('a') || heldKeys.has('d')) {
+    if (heldKeys.has("a") || heldKeys.has("d")) {
       animationFrame = requestAnimationFrame(updateCoils);
     }
 
@@ -363,18 +445,23 @@ export const SpiralGenerator = () => {
 
   useEffect(() => {
     let animationFrame;
-    
+
     const updateThickness = () => {
-      if (heldKeys.has('w') || heldKeys.has('s')) {
-        setLineThickness(prev => {
-          const delta = heldKeys.has('w') ? LINE_ADJUST_SPEED : -LINE_ADJUST_SPEED;
-          return Math.min(MAX_LINE_THICKNESS, Math.max(MIN_LINE_THICKNESS, prev + delta));
+      if (heldKeys.has("w") || heldKeys.has("s")) {
+        setLineThickness((prev) => {
+          const delta = heldKeys.has("w")
+            ? LINE_ADJUST_SPEED
+            : -LINE_ADJUST_SPEED;
+          return Math.min(
+            MAX_LINE_THICKNESS,
+            Math.max(MIN_LINE_THICKNESS, prev + delta)
+          );
         });
         animationFrame = requestAnimationFrame(updateThickness);
       }
     };
 
-    if (heldKeys.has('w') || heldKeys.has('s')) {
+    if (heldKeys.has("w") || heldKeys.has("s")) {
       animationFrame = requestAnimationFrame(updateThickness);
     }
 
@@ -386,8 +473,8 @@ export const SpiralGenerator = () => {
   }, [heldKeys]);
 
   const handleKeyDown = useCallback(
-    e => {
-      if (e.metaKey && !e.shiftKey && e.key === 'z') {
+    (e) => {
+      if (e.metaKey && !e.shiftKey && e.key === "z") {
         e.preventDefault();
         if (undoStack.length > 0) {
           const previousState = undoStack[undoStack.length - 1];
@@ -395,7 +482,7 @@ export const SpiralGenerator = () => {
           setSpirals(previousState);
           setUndoStack(undoStack.slice(0, -1));
         }
-      } else if (e.metaKey && e.shiftKey && e.key === 'z') {
+      } else if (e.metaKey && e.shiftKey && e.key === "z") {
         e.preventDefault();
         if (redoStack.length > 0) {
           const nextState = redoStack[redoStack.length - 1];
@@ -403,35 +490,101 @@ export const SpiralGenerator = () => {
           setSpirals(nextState);
           setRedoStack(redoStack.slice(0, -1));
         }
-      } else if (e.key.toLowerCase() === 'x') {
+      } else if (e.key.toLowerCase() === "x") {
         e.preventDefault();
         const now = Date.now();
         if (now - lastFlipTime > 100) {
+          if (isDrawing && startPoint && currentPoint && parentSpiral) {
+            if (e.shiftKey) {
+              // Flip over the green radial line
+              const dx = startPoint.x - parentSpiral.center.x;
+              const dy = startPoint.y - parentSpiral.center.y;
+              const radialAngle = Math.atan2(dy, dx);
+
+              // Reflect current point over radial line
+              const reflectPoint = (point) => {
+                const vx = point.x - startPoint.x;
+                const vy = point.y - startPoint.y;
+
+                const cos2 = Math.cos(2 * radialAngle);
+                const sin2 = Math.sin(2 * radialAngle);
+
+                return {
+                  x: startPoint.x + vx * cos2 + vy * sin2,
+                  y: startPoint.y + vx * sin2 - vy * cos2,
+                };
+              };
+
+              const reflectedPoint = reflectPoint(currentPoint);
+              setCurrentPoint(reflectedPoint);
+            } else {
+              // Regular X: Flip over orange tangent line
+              const dx = startPoint.x - parentSpiral.center.x;
+              const dy = startPoint.y - parentSpiral.center.y;
+              const r = Math.sqrt(dx * dx + dy * dy);
+              const baseAngle = Math.atan2(dy, dx);
+              const growthFactor =
+                Math.log(r) / (2 * Math.PI * parentSpiral.coils);
+              const tangentAngle =
+                baseAngle +
+                (parentSpiral.clockwise ? 1 : -1) *
+                  (Math.PI / 2 + Math.atan(growthFactor));
+
+              const reflectPoint = (point) => {
+                const vx = point.x - startPoint.x;
+                const vy = point.y - startPoint.y;
+
+                const cos2 = Math.cos(2 * tangentAngle);
+                const sin2 = Math.sin(2 * tangentAngle);
+
+                return {
+                  x: startPoint.x + vx * cos2 + vy * sin2,
+                  y: startPoint.y + vx * sin2 - vy * cos2,
+                };
+              };
+
+              const reflectedPoint = reflectPoint(currentPoint);
+              setCurrentPoint(reflectedPoint);
+            }
+          }
+
+          // Flip direction
           setIsClockwise(!isClockwise);
           setLastFlipTime(now);
         }
-      } else if (e.key.toLowerCase() === 'q') {
+      } else if (e.key.toLowerCase() === "q") {
         e.preventDefault();
-        setSnappingEnabled(prev => !prev);
-      } else if (e.key.toLowerCase() === 'e') {
+        setSnappingEnabled((prev) => !prev);
+      } else if (e.key.toLowerCase() === "e") {
         e.preventDefault();
-        setTaperToCenter(prev => !prev);
-      } else if (['w', 'a', 's', 'd'].includes(e.key.toLowerCase())) {
+        setTaperToCenter((prev) => !prev);
+      } else if (["w", "a", "s", "d"].includes(e.key.toLowerCase())) {
         e.preventDefault();
-        setHeldKeys(prev => new Set([...prev, e.key.toLowerCase()]));
-      } else if (e.key === 'z' || e.key === 'Z') {
-        setSizeRatio(prev => Math.max(0, prev - 0.1));
-      } else if (e.key === 'c' || e.key === 'C') {
-        setSizeRatio(prev => Math.min(3.0, prev + 0.1));
+        setHeldKeys((prev) => new Set([...prev, e.key.toLowerCase()]));
+      } else if (e.key === "z" || e.key === "Z") {
+        setSizeRatio((prev) => Math.max(0, prev - 0.1));
+      } else if (e.key === "c" || e.key === "C") {
+        setSizeRatio((prev) => Math.min(3.0, prev + 0.1));
       }
     },
-    [spirals, undoStack, redoStack, isClockwise, lastFlipTime, sizeRatio]
+    [
+      spirals,
+      undoStack,
+      redoStack,
+      isClockwise,
+      lastFlipTime,
+      sizeRatio,
+      isDrawing,
+      startPoint,
+      currentPoint,
+      parentSpiral,
+    ]
   );
 
-  const handleKeyUp = useCallback(e => {
-    if (['w', 'a', 's', 'd'].includes(e.key.toLowerCase())) {
+  const handleKeyUp = useCallback((e) => {
+    if (["w", "a", "s", "d"].includes(e.key.toLowerCase())) {
       e.preventDefault();
-      setHeldKeys(prev => {
+      setHeldKeys((prev) => {
         const next = new Set(prev);
         next.delete(e.key.toLowerCase());
         return next;
@@ -440,26 +593,38 @@ export const SpiralGenerator = () => {
   }, []);
 
   useEffect(() => {
-    window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('keyup', handleKeyUp);
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
     return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
     };
   }, [handleKeyDown, handleKeyUp]);
 
   const getCoilsForSize = (distance) => {
-    const minCoils  =defaultCoils * 0.5;
+    const minCoils = defaultCoils * 0.5;
     const maxCoils = defaultCoils;
     const minDistance = 50;
     const maxDistance = 200;
-    
-    return minCoils + 
-      (maxCoils - minCoils) * 
-      Math.min(1, Math.max(0, (distance - minDistance) / (maxDistance - minDistance)));
+
+    return (
+      minCoils +
+      (maxCoils - minCoils) *
+        Math.min(
+          1,
+          Math.max(0, (distance - minDistance) / (maxDistance - minDistance))
+        )
+    );
   };
 
-  const generateSpiralPointsByType = (outer, center, clockwise, coils, type, spiral) => {
+  const generateSpiralPointsByType = (
+    outer,
+    center,
+    clockwise,
+    coils,
+    type,
+    spiral
+  ) => {
     if (!outer || !center) return [];
 
     const points = [];
@@ -473,22 +638,24 @@ export const SpiralGenerator = () => {
     switch (type) {
       case SPIRAL_TYPES.LINE:
         // Just return start and end points for a line
-        points.push(
-          { x: outer.x, y: outer.y },
-          { x: center.x, y: center.y }
-        );
+        points.push({ x: outer.x, y: outer.y }, { x: center.x, y: center.y });
         break;
 
       case SPIRAL_TYPES.LOGARITHMIC:
         // Current logarithmic spiral
-        const growthFactor = Math.log(distance) / (2 * Math.PI * Math.abs(coils));
+        const growthFactor =
+          Math.log(distance) / (2 * Math.PI * Math.abs(coils));
         for (let i = steps; i >= 0; i--) {
           const t = i / steps;
-          const radius = Math.exp(2 * Math.PI * Math.abs(coils) * t * growthFactor);
-          const angle = baseAngle + angleMultiplier * 2 * Math.PI * Math.abs(coils) * (1 - t);
+          const radius = Math.exp(
+            2 * Math.PI * Math.abs(coils) * t * growthFactor
+          );
+          const angle =
+            baseAngle +
+            angleMultiplier * 2 * Math.PI * Math.abs(coils) * (1 - t);
           points.push({
             x: center.x + radius * Math.cos(angle),
-            y: center.y + radius * Math.sin(angle)
+            y: center.y + radius * Math.sin(angle),
           });
         }
         break;
@@ -496,12 +663,14 @@ export const SpiralGenerator = () => {
       case SPIRAL_TYPES.ARCHIMEDES:
         // Linear growth spiral (reversed t for correct tapering)
         for (let i = steps; i >= 0; i--) {
-          const t = 1 - (i / steps); // Reversed t
+          const t = 1 - i / steps; // Reversed t
           const radius = distance * t;
-          const angle = baseAngle + angleMultiplier * 2 * Math.PI * Math.abs(coils) * (1 - t);
+          const angle =
+            baseAngle +
+            angleMultiplier * 2 * Math.PI * Math.abs(coils) * (1 - t);
           points.push({
             x: center.x + radius * Math.cos(angle),
-            y: center.y + radius * Math.sin(angle)
+            y: center.y + radius * Math.sin(angle),
           });
         }
         break;
@@ -512,10 +681,12 @@ export const SpiralGenerator = () => {
           const t = i / steps;
           const scale = 5;
           const radius = distance / (1 + scale * t);
-          const angle = baseAngle + (clockwise ? -1 : 1) * 2 * Math.PI * Math.abs(coils) * (1 - t);
+          const angle =
+            baseAngle +
+            (clockwise ? -1 : 1) * 2 * Math.PI * Math.abs(coils) * (1 - t);
           points.push({
             x: center.x + radius * Math.cos(angle),
-            y: center.y + radius * Math.sin(angle)
+            y: center.y + radius * Math.sin(angle),
           });
         }
         break;
@@ -523,54 +694,69 @@ export const SpiralGenerator = () => {
       case SPIRAL_TYPES.FERMAT:
         // Square root spiral (reversed t for correct tapering)
         for (let i = steps; i >= 0; i--) {
-          const t = 1 - (i / steps); // Reversed t
+          const t = 1 - i / steps; // Reversed t
           const radius = distance * Math.sqrt(t);
-          const angle = baseAngle + angleMultiplier * 2 * Math.PI * Math.abs(coils) * (1 - t);
+          const angle =
+            baseAngle +
+            angleMultiplier * 2 * Math.PI * Math.abs(coils) * (1 - t);
           points.push({
             x: center.x + radius * Math.cos(angle),
-            y: center.y + radius * Math.sin(angle)
+            y: center.y + radius * Math.sin(angle),
           });
         }
         break;
 
       case SPIRAL_TYPES.S_CURVE:
-        const baseGrowthFactor = Math.log(distance) / (2 * Math.PI * Math.abs(coils));
+        const baseGrowthFactor =
+          Math.log(distance) / (2 * Math.PI * Math.abs(coils));
         const firstSpiralPoints = [];
         const secondSpiralPoints = [];
-        
+
         // Get the sizeRatio from the spiral object or use current state for preview
         const currentSizeRatio = spiral?.sizeRatio ?? sizeRatio;
-        
+
         // Generate first spiral (full size)
         for (let i = 0; i <= steps; i++) {
           const t = i / steps;
-          const radius = distance * Math.exp(2 * Math.PI * Math.abs(coils) * (t - 1) * baseGrowthFactor);
-          const angle = baseAngle + angleMultiplier * 2 * Math.PI * Math.abs(coils) * (1 - t);
+          const radius =
+            distance *
+            Math.exp(
+              2 * Math.PI * Math.abs(coils) * (t - 1) * baseGrowthFactor
+            );
+          const angle =
+            baseAngle +
+            angleMultiplier * 2 * Math.PI * Math.abs(coils) * (1 - t);
           firstSpiralPoints.push({
             x: outer.x + radius * Math.cos(angle + Math.PI),
-            y: outer.y + radius * Math.sin(angle + Math.PI)
+            y: outer.y + radius * Math.sin(angle + Math.PI),
           });
         }
-        
+
         // Generate second spiral rotated 180° around cursor position
         for (let i = steps; i >= 0; i--) {
           const t = i / steps;
-          const radius = distance * Math.exp(2 * Math.PI * Math.abs(coils) * (t - 1) * baseGrowthFactor);
-          const angle = baseAngle + angleMultiplier * 2 * Math.PI * Math.abs(coils) * (1 - t);
-          
+          const radius =
+            distance *
+            Math.exp(
+              2 * Math.PI * Math.abs(coils) * (t - 1) * baseGrowthFactor
+            );
+          const angle =
+            baseAngle +
+            angleMultiplier * 2 * Math.PI * Math.abs(coils) * (1 - t);
+
           // Calculate base point position
           const baseX = outer.x + radius * Math.cos(angle + Math.PI);
           const baseY = outer.y + radius * Math.sin(angle + Math.PI);
-          
+
           // Scale from cursor point using the spiral's stored ratio
           const dx = baseX - center.x;
           const dy = baseY - center.y;
           secondSpiralPoints.push({
-            x: center.x - (dx * currentSizeRatio),
-            y: center.y - (dy * currentSizeRatio)
+            x: center.x - dx * currentSizeRatio,
+            y: center.y - dy * currentSizeRatio,
           });
         }
-        
+
         points.push(...firstSpiralPoints, ...secondSpiralPoints);
         break;
     }
@@ -578,7 +764,17 @@ export const SpiralGenerator = () => {
     return points;
   };
 
-  const generateTaperedSpiralSegments = (outer, center, clockwise = true, segments = 50, startThickness = 2, coils = 3, taperToCenter = true, type = SPIRAL_TYPES.LOGARITHMIC, spiral) => {
+  const generateTaperedSpiralSegments = (
+    outer,
+    center,
+    clockwise = true,
+    segments = 50,
+    startThickness = 2,
+    coils = 3,
+    taperToCenter = true,
+    type = SPIRAL_TYPES.LOGARITHMIC,
+    spiral
+  ) => {
     const actualClockwise = coils >= 0 ? clockwise : !clockwise;
     const absoluteCoils = Math.abs(coils);
 
@@ -587,14 +783,11 @@ export const SpiralGenerator = () => {
     const dx = outer.x - center.x;
     const dy = outer.y - center.y;
     const distance = Math.sqrt(dx * dx + dy * dy);
-    
+
     if (distance < 0.1) return [];
-    
-    const baseAngle = Math.atan2(dy, dx);
-    const growthFactor = Math.log(distance) / (2 * Math.PI * absoluteCoils);
-    
+
     const sizeFactor = Math.max(1, 100 / distance);
-    
+
     const result = [];
     for (let i = segments; i >= 1; i--) {
       const points = generateSpiralPointsByType(
@@ -605,19 +798,23 @@ export const SpiralGenerator = () => {
         type,
         spiral
       ).filter((_, index, arr) => {
-        const segStart = Math.floor((i - 1) * arr.length / segments);
-        const segEnd = Math.floor(i * arr.length / segments);
+        const segStart = Math.floor(((i - 1) * arr.length) / segments);
+        const segEnd = Math.floor((i * arr.length) / segments);
         return index >= segStart && index <= segEnd;
       });
-      
+
       const progress = i / segments;
-      const taperT = taperToCenter ? progress : (1 - progress);
-      const segmentThickness = (startThickness * Math.pow(taperT, sizeFactor)) + 0.5;
-      
-      if (points.length > 0 && points.every(p => !isNaN(p.x) && !isNaN(p.y))) {
+      const taperT = taperToCenter ? progress : 1 - progress;
+      const segmentThickness =
+        startThickness * Math.pow(taperT, sizeFactor) + 0.5;
+
+      if (
+        points.length > 0 &&
+        points.every((p) => !isNaN(p.x) && !isNaN(p.y))
+      ) {
         result.push({
           points,
-          thickness: segmentThickness
+          thickness: segmentThickness,
         });
       }
     }
@@ -625,27 +822,27 @@ export const SpiralGenerator = () => {
     return result;
   };
 
-  const SpiralPath = ({ spiral, opacity = 1 }) => {
+  const SpiralPath = ({ spiral, opacity = 1, previewThickness }) => {
     const segments = generateTaperedSpiralSegments(
       spiral.outer,
       spiral.center,
       spiral.clockwise,
       50,
-      spiral.outer.thickness || lineThickness,
+      previewThickness || spiral.outer.thickness || lineThickness,
       spiral.coils,
       spiral.taperToCenter ?? true,
       spiral.type || SPIRAL_TYPES.LOGARITHMIC,
       spiral
     );
-    
+
     return (
       <>
         {segments.map((segment, index) => (
           <path
             key={index}
-            d={`M ${segment.points.map(p => `${p.x},${p.y}`).join(' L ')}`}
-            fill='none'
-            stroke='blue'
+            d={`M ${segment.points.map((p) => `${p.x},${p.y}`).join(" L ")}`}
+            fill="none"
+            stroke="blue"
             strokeWidth={segment.thickness}
             opacity={opacity}
           />
@@ -657,41 +854,52 @@ export const SpiralGenerator = () => {
   return (
     <div className="p-4 bg-gray-50 min-h-screen">
       <div className="max-w-[1800px] mx-auto">
-        <h1 className="text-2xl font-bold mb-6 text-gray-800">Spiral Generator</h1>
-        
+        <h1 className="text-2xl font-bold mb-6 text-gray-800">
+          Spiral Generator
+        </h1>
+
         <div className="flex gap-6">
           {/* Controls container as a table */}
           <table className="flex-none border-separate border-spacing-4">
             <tr>
               {/* Shape Controls */}
               <td className="w-[250px] bg-white p-4 rounded-lg shadow align-top">
-                <h2 className="font-semibold text-gray-700 mb-4">Shape Controls</h2>
-                <div className='mb-4'>
-                  <label className='block text-sm font-medium text-gray-700 mb-1'>
+                <h2 className="font-semibold text-gray-700 mb-4">
+                  Shape Controls
+                </h2>
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
                     Type:
                   </label>
                   <select
-                    className='w-full p-2 border rounded'
+                    className="w-full p-2 border rounded"
                     value={spiralType}
-                    onChange={e => setSpiralType(e.target.value)}
+                    onChange={(e) => setSpiralType(e.target.value)}
                   >
                     <option value={SPIRAL_TYPES.LINE}>Line</option>
                     <option value={SPIRAL_TYPES.S_CURVE}>S Curve</option>
-                    <option value={SPIRAL_TYPES.LOGARITHMIC}>Logarithmic Spiral</option>
-                    <option value={SPIRAL_TYPES.ARCHIMEDES}>Archimedes Spiral</option>
-                    <option value={SPIRAL_TYPES.HYPERBOLIC}>Hyperbolic Spiral</option>
+                    <option value={SPIRAL_TYPES.LOGARITHMIC}>
+                      Logarithmic Spiral
+                    </option>
+                    <option value={SPIRAL_TYPES.ARCHIMEDES}>
+                      Archimedes Spiral
+                    </option>
+                    <option value={SPIRAL_TYPES.HYPERBOLIC}>
+                      Hyperbolic Spiral
+                    </option>
                     <option value={SPIRAL_TYPES.FERMAT}>Fermat Spiral</option>
                   </select>
                 </div>
-                
+
                 <div className="mb-4">
-                  <label className='block text-sm font-medium text-gray-700 mb-2'>
-                    Direction: <span className="text-gray-500 text-xs">(X)</span>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Direction:{" "}
+                    <span className="text-gray-500 text-xs">(X)</span>
                   </label>
                   <div className="flex gap-2">
                     <button
                       className={`flex-1 px-3 py-1 rounded ${
-                        isClockwise ? 'bg-blue-500 text-white' : 'bg-gray-200'
+                        isClockwise ? "bg-blue-500 text-white" : "bg-gray-200"
                       }`}
                       onClick={() => setIsClockwise(true)}
                     >
@@ -699,7 +907,7 @@ export const SpiralGenerator = () => {
                     </button>
                     <button
                       className={`flex-1 px-3 py-1 rounded ${
-                        !isClockwise ? 'bg-blue-500 text-white' : 'bg-gray-200'
+                        !isClockwise ? "bg-blue-500 text-white" : "bg-gray-200"
                       }`}
                       onClick={() => setIsClockwise(false)}
                     >
@@ -709,13 +917,14 @@ export const SpiralGenerator = () => {
                 </div>
 
                 <div>
-                  <label className='block text-sm font-medium text-gray-700 mb-2'>
-                    Taper Direction: <span className="text-gray-500 text-xs">(E)</span>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Taper Direction:{" "}
+                    <span className="text-gray-500 text-xs">(E)</span>
                   </label>
                   <div className="flex gap-2">
                     <button
                       className={`flex-1 px-3 py-1 rounded ${
-                        taperToCenter ? 'bg-blue-500 text-white' : 'bg-gray-200'
+                        taperToCenter ? "bg-blue-500 text-white" : "bg-gray-200"
                       }`}
                       onClick={() => setTaperToCenter(true)}
                     >
@@ -723,7 +932,9 @@ export const SpiralGenerator = () => {
                     </button>
                     <button
                       className={`flex-1 px-3 py-1 rounded ${
-                        !taperToCenter ? 'bg-blue-500 text-white' : 'bg-gray-200'
+                        !taperToCenter
+                          ? "bg-blue-500 text-white"
+                          : "bg-gray-200"
                       }`}
                       onClick={() => setTaperToCenter(false)}
                     >
@@ -738,31 +949,33 @@ export const SpiralGenerator = () => {
                 <h2 className="font-semibold text-gray-700 mb-4">Parameters</h2>
                 <div className="space-y-4">
                   <div>
-                    <label className='block text-sm font-medium text-gray-700 mb-2'>
-                      Line Thickness: {lineThickness.toFixed(1)}px <span className="text-gray-500 text-xs">(W/S)</span>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Line Thickness: {lineThickness.toFixed(1)}px{" "}
+                      <span className="text-gray-500 text-xs">(W/S)</span>
                     </label>
                     <input
-                      type='range'
-                      min='1'
-                      max='50'
-                      step='0.1'
+                      type="range"
+                      min="1"
+                      max="50"
+                      step="0.1"
                       value={lineThickness}
-                      onChange={e => setLineThickness(Number(e.target.value))}
+                      onChange={(e) => setLineThickness(Number(e.target.value))}
                       className="w-full"
                     />
                   </div>
 
                   <div>
-                    <label className='block text-sm font-medium text-gray-700 mb-2'>
-                      Coils: {defaultCoils.toFixed(1)} <span className="text-gray-500 text-xs">(A/D)</span>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Coils: {defaultCoils.toFixed(1)}{" "}
+                      <span className="text-gray-500 text-xs">(A/D)</span>
                     </label>
                     <input
-                      type='range'
-                      min='-22'
-                      max='22'
-                      step='0.1'
+                      type="range"
+                      min="-22"
+                      max="22"
+                      step="0.1"
                       value={defaultCoils}
-                      onChange={e => setDefaultCoils(Number(e.target.value))}
+                      onChange={(e) => setDefaultCoils(Number(e.target.value))}
                       className="w-full"
                     />
                   </div>
@@ -774,43 +987,50 @@ export const SpiralGenerator = () => {
                 <h2 className="font-semibold text-gray-700 mb-4">Snapping</h2>
                 <div className="space-y-4">
                   <div>
-                    <label className='block text-sm font-medium text-gray-700 mb-2'>
-                      Snapping: <span className="text-gray-500 text-xs">(Q)</span>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Snapping:{" "}
+                      <span className="text-gray-500 text-xs">(Q)</span>
                     </label>
                     <button
                       className={`w-full px-3 py-1 rounded ${
-                        snappingEnabled ? 'bg-blue-500 text-white' : 'bg-gray-200'
+                        snappingEnabled
+                          ? "bg-blue-500 text-white"
+                          : "bg-gray-200"
                       }`}
                       onClick={() => setSnappingEnabled(!snappingEnabled)}
                     >
-                      {snappingEnabled ? 'Enabled' : 'Disabled'}
+                      {snappingEnabled ? "Enabled" : "Disabled"}
                     </button>
                   </div>
 
                   <div>
-                    <label className='block text-sm font-medium text-gray-700 mb-2'>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
                       Endpoint Snap Radius: {endpointSnapRadius}px
                     </label>
                     <input
-                      type='range'
-                      min='1'
-                      max='30'
+                      type="range"
+                      min="1"
+                      max="30"
                       value={endpointSnapRadius}
-                      onChange={e => setEndpointSnapRadius(Number(e.target.value))}
+                      onChange={(e) =>
+                        setEndpointSnapRadius(Number(e.target.value))
+                      }
                       className="w-full"
                     />
                   </div>
 
                   <div>
-                    <label className='block text-sm font-medium text-gray-700 mb-2'>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
                       Center Snap Radius: {centerSnapRadius}px
                     </label>
                     <input
-                      type='range'
-                      min='1'
-                      max='50'
+                      type="range"
+                      min="1"
+                      max="50"
                       value={centerSnapRadius}
-                      onChange={e => setCenterSnapRadius(Number(e.target.value))}
+                      onChange={(e) =>
+                        setCenterSnapRadius(Number(e.target.value))
+                      }
                       className="w-full"
                     />
                   </div>
@@ -821,7 +1041,7 @@ export const SpiralGenerator = () => {
               <td className="w-[250px] bg-white p-4 rounded-lg shadow align-top">
                 <h2 className="font-semibold text-gray-700 mb-4">Actions</h2>
                 <button
-                  className='w-full px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors mb-4'
+                  className="w-full px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors mb-4"
                   onClick={() => {
                     setUndoStack([...undoStack, spirals]);
                     setSpirals([]);
@@ -831,8 +1051,12 @@ export const SpiralGenerator = () => {
                   Clear Canvas
                 </button>
                 <div className="text-sm text-gray-600 text-center">
-                  <div><span className="font-medium">Undo:</span> ⌘Z</div>
-                  <div><span className="font-medium">Redo:</span> ⌘⇧Z</div>
+                  <div>
+                    <span className="font-medium">Undo:</span> ⌘Z
+                  </div>
+                  <div>
+                    <span className="font-medium">Redo:</span> ⌘⇧Z
+                  </div>
                 </div>
               </td>
             </tr>
@@ -856,29 +1080,62 @@ export const SpiralGenerator = () => {
                     spiral={{
                       outer: {
                         ...startPoint,
-                        thickness: lineThickness
+                        thickness: lineThickness,
                       },
                       center: currentPoint,
                       clockwise: isClockwise,
                       coils: getCoilsForSize(
                         Math.sqrt(
-                          Math.pow(currentPoint.x - startPoint.x, 2) + 
-                          Math.pow(currentPoint.y - startPoint.y, 2)
+                          Math.pow(currentPoint.x - startPoint.x, 2) +
+                            Math.pow(currentPoint.y - startPoint.y, 2)
                         )
                       ),
                       taperToCenter,
                       type: spiralType,
-                      sizeRatio
+                      sizeRatio,
                     }}
                     opacity={0.5}
+                    previewThickness={lineThickness}
                   />
-                  {snappingEnabled && (
+                  {snappingEnabled && parentSpiral && (
                     <>
                       {(() => {
-                        const { spiral: parentSpiral } = findSnapPoint(startPoint, true);
-                        if (parentSpiral) {
-                          const extendedLine = extendLine(startPoint, parentSpiral.center, 100);
-                          return (
+                        // Calculate tangent line at snap point
+                        const dx = startPoint.x - parentSpiral.center.x;
+                        const dy = startPoint.y - parentSpiral.center.y;
+                        const tangentAngle =
+                          Math.atan2(dy, dx) +
+                          (parentSpiral.clockwise ? Math.PI / 2 : -Math.PI / 2);
+
+                        // Create tangent line points
+                        const tangentLength = 100;
+                        const tangentStart = {
+                          x:
+                            startPoint.x -
+                            Math.cos(tangentAngle) * tangentLength,
+                          y:
+                            startPoint.y -
+                            Math.sin(tangentAngle) * tangentLength,
+                        };
+                        const tangentEnd = {
+                          x:
+                            startPoint.x +
+                            Math.cos(tangentAngle) * tangentLength,
+                          y:
+                            startPoint.y +
+                            Math.sin(tangentAngle) * tangentLength,
+                        };
+
+                        // Create radial line through center
+                        const extendedLine = extendLine(
+                          startPoint,
+                          parentSpiral.center,
+                          100
+                        );
+
+                        return (
+                          <>
+                            {/* Radial line */}
                             <line
                               x1={extendedLine.start.x}
                               y1={extendedLine.start.y}
@@ -888,31 +1145,19 @@ export const SpiralGenerator = () => {
                               strokeWidth="2"
                               strokeDasharray="5,5"
                             />
-                          );
-                        }
-                        return null;
+                            {/* Tangent line */}
+                            <line
+                              x1={tangentStart.x}
+                              y1={tangentStart.y}
+                              x2={tangentEnd.x}
+                              y2={tangentEnd.y}
+                              stroke="purple"
+                              strokeWidth="2"
+                              strokeDasharray="5,5"
+                            />
+                          </>
+                        );
                       })()}
-                      {snapPoint && (
-                        <>
-                          <circle
-                            cx={snapPoint.x}
-                            cy={snapPoint.y}
-                            r={4}
-                            fill="green"
-                            opacity="0.8"
-                          />
-                          <circle
-                            cx={currentPoint.x}
-                            cy={currentPoint.y}
-                            r={endpointSnapRadius}
-                            fill="none"
-                            stroke="green"
-                            strokeWidth="1"
-                            strokeDasharray="2,2"
-                            opacity="0.5"
-                          />
-                        </>
-                      )}
                     </>
                   )}
                 </>
@@ -924,17 +1169,71 @@ export const SpiralGenerator = () => {
                     cx={snapPoint.x}
                     cy={snapPoint.y}
                     r={4}
-                    fill='purple'
-                    opacity='0.5'
+                    fill="purple"
+                    opacity="0.5"
                   />
                   <circle
                     cx={snapPoint.x}
                     cy={snapPoint.y}
                     r={endpointSnapRadius}
-                    fill='none'
-                    stroke='purple'
-                    strokeWidth='1'
-                    opacity='0.3'
+                    fill="none"
+                    stroke="purple"
+                    strokeWidth="1"
+                    opacity="0.3"
+                  />
+                </>
+              )}
+
+              {isDrawing && snapPoint && snappedSpiral && (
+                <>
+                  {/* Calculate and draw tangent at start point */}
+                  {(() => {
+                    // Calculate vector from center to start point
+                    const dx = startPoint.x - parentSpiral.center.x;
+                    const dy = startPoint.y - parentSpiral.center.y;
+                    const r = Math.sqrt(dx * dx + dy * dy);
+
+                    // Calculate base angle
+                    const baseAngle = Math.atan2(dy, dx);
+
+                    // Calculate growth factor for logarithmic spiral
+                    const growthFactor =
+                      Math.log(r) / (2 * Math.PI * parentSpiral.coils);
+
+                    // Calculate true spiral tangent angle
+                    const tangentAngle =
+                      baseAngle +
+                      (parentSpiral.clockwise ? 1 : -1) *
+                        (Math.PI / 2 + Math.atan(growthFactor));
+
+                    const tangentLength = 100;
+                    const tangentStart = {
+                      x: startPoint.x - Math.cos(tangentAngle) * tangentLength,
+                      y: startPoint.y - Math.sin(tangentAngle) * tangentLength,
+                    };
+                    const tangentEnd = {
+                      x: startPoint.x + Math.cos(tangentAngle) * tangentLength,
+                      y: startPoint.y + Math.sin(tangentAngle) * tangentLength,
+                    };
+
+                    return (
+                      <line
+                        x1={tangentStart.x}
+                        y1={tangentStart.y}
+                        x2={tangentEnd.x}
+                        y2={tangentEnd.y}
+                        stroke="orange"
+                        strokeWidth="2"
+                        strokeDasharray="5,5"
+                      />
+                    );
+                  })()}
+                  <circle
+                    cx={snapPoint.x}
+                    cy={snapPoint.y}
+                    r={4}
+                    fill="green"
+                    opacity="0.8"
                   />
                 </>
               )}
