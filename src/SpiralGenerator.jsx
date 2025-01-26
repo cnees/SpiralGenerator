@@ -122,9 +122,18 @@ export const SpiralGenerator = () => {
     let closestPoint = null;
     let closestSpiral = null;
 
-    // If we're drawing and have a parent spiral, check extended line first
     if (isDrawing && startPoint && parentSpiral) {
-      // Check original line
+      const dx = startPoint.x - parentSpiral.center.x;
+      const dy = startPoint.y - parentSpiral.center.y;
+      const r = Math.sqrt(dx * dx + dy * dy);
+      const baseAngle = Math.atan2(dy, dx);
+      const growthFactor = Math.log(r) / (2 * Math.PI * parentSpiral.coils);
+      const tangentAngle =
+        baseAngle +
+        (parentSpiral.clockwise ? 1 : -1) *
+          (Math.PI / 2 + Math.atan(growthFactor));
+
+      // Original line
       const extendedLine = extendLine(startPoint, parentSpiral.center, 100);
       const result = distanceToLineSegment(
         point,
@@ -132,33 +141,37 @@ export const SpiralGenerator = () => {
         extendedLine.end
       );
 
-      // Check opposite line
-      const oppositeStart = {
-        x: 2 * parentSpiral.center.x - startPoint.x,
-        y: 2 * parentSpiral.center.y - startPoint.y,
+      // Reflect points for mirrored line
+      const reflectPoint = (point) => {
+        const vx = point.x - startPoint.x;
+        const vy = point.y - startPoint.y;
+        const cos2 = Math.cos(2 * tangentAngle);
+        const sin2 = Math.sin(2 * tangentAngle);
+        return {
+          x: startPoint.x + vx * cos2 + vy * sin2,
+          y: startPoint.y + vx * sin2 - vy * cos2,
+        };
       };
-      const oppositeExtendedLine = extendLine(
-        oppositeStart,
-        parentSpiral.center,
-        100
-      );
-      const oppositeResult = distanceToLineSegment(
+
+      const mirroredStart = reflectPoint(extendedLine.start);
+      const mirroredEnd = reflectPoint(extendedLine.end);
+      const mirroredResult = distanceToLineSegment(
         point,
-        oppositeExtendedLine.start,
-        oppositeExtendedLine.end
+        mirroredStart,
+        mirroredEnd
       );
 
       // Use whichever line is closer
       if (
         result.distance <= endpointSnapRadius ||
-        oppositeResult.distance <= endpointSnapRadius
+        mirroredResult.distance <= endpointSnapRadius
       ) {
-        if (result.distance < oppositeResult.distance) {
+        if (result.distance < mirroredResult.distance) {
           closestDist = result.distance;
           closestPoint = result.point;
         } else {
-          closestDist = oppositeResult.distance;
-          closestPoint = oppositeResult.point;
+          closestDist = mirroredResult.distance;
+          closestPoint = mirroredResult.point;
         }
         closestSpiral = parentSpiral;
       }
@@ -1097,45 +1110,51 @@ export const SpiralGenerator = () => {
                     opacity={0.5}
                     previewThickness={lineThickness}
                   />
-                  {snappingEnabled && parentSpiral && (
+                  {snappingEnabled && parentSpiral && startPoint && (
                     <>
                       {(() => {
                         // Calculate tangent line at snap point
                         const dx = startPoint.x - parentSpiral.center.x;
                         const dy = startPoint.y - parentSpiral.center.y;
+                        const r = Math.sqrt(dx * dx + dy * dy);
+                        const baseAngle = Math.atan2(dy, dx);
+                        const growthFactor =
+                          Math.log(r) / (2 * Math.PI * parentSpiral.coils);
+
+                        // Calculate true spiral tangent angle
                         const tangentAngle =
-                          Math.atan2(dy, dx) +
-                          (parentSpiral.clockwise ? Math.PI / 2 : -Math.PI / 2);
+                          baseAngle +
+                          (parentSpiral.clockwise ? 1 : -1) *
+                            (Math.PI / 2 + Math.atan(growthFactor));
 
-                        // Create tangent line points
-                        const tangentLength = 100;
-                        const tangentStart = {
-                          x:
-                            startPoint.x -
-                            Math.cos(tangentAngle) * tangentLength,
-                          y:
-                            startPoint.y -
-                            Math.sin(tangentAngle) * tangentLength,
-                        };
-                        const tangentEnd = {
-                          x:
-                            startPoint.x +
-                            Math.cos(tangentAngle) * tangentLength,
-                          y:
-                            startPoint.y +
-                            Math.sin(tangentAngle) * tangentLength,
-                        };
-
-                        // Create radial line through center
+                        // Create original radial line
                         const extendedLine = extendLine(
                           startPoint,
                           parentSpiral.center,
                           100
                         );
 
+                        // Reflect the radial line over the tangent
+                        const reflectPoint = (point) => {
+                          const vx = point.x - startPoint.x;
+                          const vy = point.y - startPoint.y;
+
+                          const cos2 = Math.cos(2 * tangentAngle);
+                          const sin2 = Math.sin(2 * tangentAngle);
+
+                          return {
+                            x: startPoint.x + vx * cos2 + vy * sin2,
+                            y: startPoint.y + vx * sin2 - vy * cos2,
+                          };
+                        };
+
+                        // Create mirrored line
+                        const mirroredStart = reflectPoint(extendedLine.start);
+                        const mirroredEnd = reflectPoint(extendedLine.end);
+
                         return (
                           <>
-                            {/* Radial line */}
+                            {/* Original radial line */}
                             <line
                               x1={extendedLine.start.x}
                               y1={extendedLine.start.y}
@@ -1145,13 +1164,13 @@ export const SpiralGenerator = () => {
                               strokeWidth="2"
                               strokeDasharray="5,5"
                             />
-                            {/* Tangent line */}
+                            {/* Mirrored radial line */}
                             <line
-                              x1={tangentStart.x}
-                              y1={tangentStart.y}
-                              x2={tangentEnd.x}
-                              y2={tangentEnd.y}
-                              stroke="purple"
+                              x1={mirroredStart.x}
+                              y1={mirroredStart.y}
+                              x2={mirroredEnd.x}
+                              y2={mirroredEnd.y}
+                              stroke="green"
                               strokeWidth="2"
                               strokeDasharray="5,5"
                             />
@@ -1184,59 +1203,45 @@ export const SpiralGenerator = () => {
                 </>
               )}
 
-              {isDrawing && snapPoint && snappedSpiral && (
-                <>
-                  {/* Calculate and draw tangent at start point */}
-                  {(() => {
-                    // Calculate vector from center to start point
-                    const dx = startPoint.x - parentSpiral.center.x;
-                    const dy = startPoint.y - parentSpiral.center.y;
-                    const r = Math.sqrt(dx * dx + dy * dy);
+              {isDrawing &&
+                snapPoint &&
+                snappedSpiral &&
+                parentSpiral &&
+                startPoint && (
+                  <>
+                    {(() => {
+                      // Calculate vector from center to start point
+                      const dx = startPoint.x - parentSpiral.center.x;
+                      const dy = startPoint.y - parentSpiral.center.y;
+                      const r = Math.sqrt(dx * dx + dy * dy);
 
-                    // Calculate base angle
-                    const baseAngle = Math.atan2(dy, dx);
+                      // Calculate base angle
+                      const baseAngle = Math.atan2(dy, dx);
 
-                    // Calculate growth factor for logarithmic spiral
-                    const growthFactor =
-                      Math.log(r) / (2 * Math.PI * parentSpiral.coils);
+                      // Calculate growth factor for logarithmic spiral
+                      const growthFactor =
+                        Math.log(r) / (2 * Math.PI * parentSpiral.coils);
 
-                    // Calculate true spiral tangent angle
-                    const tangentAngle =
-                      baseAngle +
-                      (parentSpiral.clockwise ? 1 : -1) *
-                        (Math.PI / 2 + Math.atan(growthFactor));
+                      // Calculate true spiral tangent angle
+                      const tangentAngle =
+                        baseAngle +
+                        (parentSpiral.clockwise ? 1 : -1) *
+                          (Math.PI / 2 + Math.atan(growthFactor));
 
-                    const tangentLength = 100;
-                    const tangentStart = {
-                      x: startPoint.x - Math.cos(tangentAngle) * tangentLength,
-                      y: startPoint.y - Math.sin(tangentAngle) * tangentLength,
-                    };
-                    const tangentEnd = {
-                      x: startPoint.x + Math.cos(tangentAngle) * tangentLength,
-                      y: startPoint.y + Math.sin(tangentAngle) * tangentLength,
-                    };
-
-                    return (
-                      <line
-                        x1={tangentStart.x}
-                        y1={tangentStart.y}
-                        x2={tangentEnd.x}
-                        y2={tangentEnd.y}
-                        stroke="orange"
-                        strokeWidth="2"
-                        strokeDasharray="5,5"
-                      />
-                    );
-                  })()}
-                  <circle
-                    cx={snapPoint.x}
-                    cy={snapPoint.y}
-                    r={4}
-                    fill="green"
-                    opacity="0.8"
-                  />
-                </>
-              )}
+                      return (
+                        <>
+                          <circle
+                            cx={snapPoint.x}
+                            cy={snapPoint.y}
+                            r={4}
+                            fill="green"
+                            opacity="0.8"
+                          />
+                        </>
+                      );
+                    })()}
+                  </>
+                )}
             </svg>
           </div>
         </div>
