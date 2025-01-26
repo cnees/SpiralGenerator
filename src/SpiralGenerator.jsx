@@ -583,12 +583,31 @@ export const SpiralGenerator = () => {
 
     const updateCoils = () => {
       if (heldKeys.has("a") || heldKeys.has("d")) {
-        setDefaultCoils((prev) => {
-          const delta = heldKeys.has("d")
-            ? COIL_ADJUST_SPEED
-            : -COIL_ADJUST_SPEED;
-          return Math.min(MAX_COILS, Math.max(MIN_COILS, prev + delta));
-        });
+        const delta = heldKeys.has("d")
+          ? COIL_ADJUST_SPEED
+          : -COIL_ADJUST_SPEED;
+        if (selectedSpiral !== null) {
+          // Update selected spiral's coils
+          setSpirals(
+            spirals.map((spiral, i) => {
+              if (i === selectedSpiral) {
+                return {
+                  ...spiral,
+                  coils: Math.min(
+                    MAX_COILS,
+                    Math.max(MIN_COILS, spiral.coils + delta)
+                  ),
+                };
+              }
+              return spiral;
+            })
+          );
+        } else {
+          // Update default coils
+          setDefaultCoils((prev) =>
+            Math.min(MAX_COILS, Math.max(MIN_COILS, prev + delta))
+          );
+        }
         animationFrame = requestAnimationFrame(updateCoils);
       }
     };
@@ -602,22 +621,47 @@ export const SpiralGenerator = () => {
         cancelAnimationFrame(animationFrame);
       }
     };
-  }, [heldKeys]);
+  }, [heldKeys, selectedSpiral, spirals]);
 
   useEffect(() => {
     let animationFrame;
 
     const updateThickness = () => {
       if (heldKeys.has("w") || heldKeys.has("s")) {
-        setLineThickness((prev) => {
-          const delta = heldKeys.has("w")
-            ? LINE_ADJUST_SPEED
-            : -LINE_ADJUST_SPEED;
-          return Math.min(
-            MAX_LINE_THICKNESS,
-            Math.max(MIN_LINE_THICKNESS, prev + delta)
+        const delta = heldKeys.has("w")
+          ? LINE_ADJUST_SPEED
+          : -LINE_ADJUST_SPEED;
+        if (selectedSpiral !== null) {
+          // Update selected spiral's thickness
+          setSpirals(
+            spirals.map((spiral, i) => {
+              if (i === selectedSpiral) {
+                return {
+                  ...spiral,
+                  outer: {
+                    ...spiral.outer,
+                    thickness: Math.min(
+                      MAX_LINE_THICKNESS,
+                      Math.max(
+                        MIN_LINE_THICKNESS,
+                        (spiral.outer.thickness || lineThickness) + delta
+                      )
+                    ),
+                  },
+                };
+              }
+              return spiral;
+            })
           );
-        });
+        } else {
+          // Update default thickness
+          setLineThickness((prev) =>
+            Math.min(
+              MAX_LINE_THICKNESS,
+              Math.max(MIN_LINE_THICKNESS, prev + delta)
+            )
+          );
+        }
         animationFrame = requestAnimationFrame(updateThickness);
       }
     };
@@ -631,7 +675,7 @@ export const SpiralGenerator = () => {
         cancelAnimationFrame(animationFrame);
       }
     };
-  }, [heldKeys]);
+  }, [heldKeys, selectedSpiral, spirals]);
 
   const handleKeyDown = useCallback(
     (e) => {
@@ -655,62 +699,22 @@ export const SpiralGenerator = () => {
         e.preventDefault();
         const now = Date.now();
         if (now - lastFlipTime > 100) {
-          if (isDrawing && startPoint && currentPoint && parentSpiral) {
-            if (e.shiftKey) {
-              // Flip over the green radial line
-              const dx = startPoint.x - parentSpiral.center.x;
-              const dy = startPoint.y - parentSpiral.center.y;
-              const radialAngle = Math.atan2(dy, dx);
-
-              // Reflect current point over radial line
-              const reflectPoint = (point) => {
-                const vx = point.x - startPoint.x;
-                const vy = point.y - startPoint.y;
-
-                const cos2 = Math.cos(2 * radialAngle);
-                const sin2 = Math.sin(2 * radialAngle);
-
-                return {
-                  x: startPoint.x + vx * cos2 + vy * sin2,
-                  y: startPoint.y + vx * sin2 - vy * cos2,
-                };
-              };
-
-              const reflectedPoint = reflectPoint(currentPoint);
-              setCurrentPoint(reflectedPoint);
-            } else {
-              // Regular X: Flip over orange tangent line
-              const dx = startPoint.x - parentSpiral.center.x;
-              const dy = startPoint.y - parentSpiral.center.y;
-              const r = Math.sqrt(dx * dx + dy * dy);
-              const baseAngle = Math.atan2(dy, dx);
-              const growthFactor =
-                Math.log(r) / (2 * Math.PI * parentSpiral.coils);
-              const tangentAngle =
-                baseAngle +
-                (parentSpiral.clockwise ? 1 : -1) *
-                  (Math.PI / 2 + Math.atan(growthFactor));
-
-              const reflectPoint = (point) => {
-                const vx = point.x - startPoint.x;
-                const vy = point.y - startPoint.y;
-
-                const cos2 = Math.cos(2 * tangentAngle);
-                const sin2 = Math.sin(2 * tangentAngle);
-
-                return {
-                  x: startPoint.x + vx * cos2 + vy * sin2,
-                  y: startPoint.y + vx * sin2 - vy * cos2,
-                };
-              };
-
-              const reflectedPoint = reflectPoint(currentPoint);
-              setCurrentPoint(reflectedPoint);
-            }
+          if (selectedSpiral !== null) {
+            // Flip selected spiral
+            setSpirals(
+              spirals.map((spiral, i) => {
+                if (i === selectedSpiral) {
+                  return {
+                    ...spiral,
+                    clockwise: !spiral.clockwise,
+                  };
+                }
+                return spiral;
+              })
+            );
+          } else {
+            setIsClockwise(!isClockwise);
           }
-
-          // Flip direction
-          setIsClockwise(!isClockwise);
           setLastFlipTime(now);
         }
       } else if (e.key.toLowerCase() === "q") {
@@ -718,7 +722,22 @@ export const SpiralGenerator = () => {
         setSnappingEnabled((prev) => !prev);
       } else if (e.key.toLowerCase() === "e") {
         e.preventDefault();
-        setTaperToCenter((prev) => !prev);
+        if (selectedSpiral !== null) {
+          // Toggle taper direction of selected spiral
+          setSpirals(
+            spirals.map((spiral, i) => {
+              if (i === selectedSpiral) {
+                return {
+                  ...spiral,
+                  taperToCenter: !spiral.taperToCenter,
+                };
+              }
+              return spiral;
+            })
+          );
+        } else {
+          setTaperToCenter(!taperToCenter);
+        }
       } else if (["w", "a", "s", "d"].includes(e.key.toLowerCase())) {
         e.preventDefault();
         setHeldKeys((prev) => new Set([...prev, e.key.toLowerCase()]));
@@ -744,6 +763,7 @@ export const SpiralGenerator = () => {
       currentPoint,
       parentSpiral,
       selectedTool,
+      selectedSpiral,
     ]
   );
 
@@ -1174,23 +1194,57 @@ export const SpiralGenerator = () => {
                 <div className="space-y-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Line Thickness: {lineThickness.toFixed(1)}px{" "}
-                      <span className="text-gray-500 text-xs">(W/S)</span>
+                      Line Thickness:{" "}
+                      {selectedSpiral !== null
+                        ? (
+                            spirals[selectedSpiral].outer.thickness ||
+                            lineThickness
+                          ).toFixed(1)
+                        : lineThickness.toFixed(1)}
+                      px <span className="text-gray-500 text-xs">(W/S)</span>
                     </label>
                     <input
                       type="range"
                       min="1"
                       max="50"
                       step="0.1"
-                      value={lineThickness}
-                      onChange={(e) => setLineThickness(Number(e.target.value))}
+                      value={
+                        selectedSpiral !== null
+                          ? spirals[selectedSpiral].outer.thickness ||
+                            lineThickness
+                          : lineThickness
+                      }
+                      onChange={(e) => {
+                        const value = Number(e.target.value);
+                        if (selectedSpiral !== null) {
+                          setSpirals(
+                            spirals.map((spiral, i) => {
+                              if (i === selectedSpiral) {
+                                return {
+                                  ...spiral,
+                                  outer: {
+                                    ...spiral.outer,
+                                    thickness: value,
+                                  },
+                                };
+                              }
+                              return spiral;
+                            })
+                          );
+                        } else {
+                          setLineThickness(value);
+                        }
+                      }}
                       className="w-full"
                     />
                   </div>
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Coils: {defaultCoils.toFixed(1)}{" "}
+                      Coils:{" "}
+                      {selectedSpiral !== null
+                        ? spirals[selectedSpiral].coils.toFixed(1)
+                        : defaultCoils.toFixed(1)}{" "}
                       <span className="text-gray-500 text-xs">(A/D)</span>
                     </label>
                     <input
@@ -1198,8 +1252,29 @@ export const SpiralGenerator = () => {
                       min="-22"
                       max="22"
                       step="0.1"
-                      value={defaultCoils}
-                      onChange={(e) => setDefaultCoils(Number(e.target.value))}
+                      value={
+                        selectedSpiral !== null
+                          ? spirals[selectedSpiral].coils
+                          : defaultCoils
+                      }
+                      onChange={(e) => {
+                        const value = Number(e.target.value);
+                        if (selectedSpiral !== null) {
+                          setSpirals(
+                            spirals.map((spiral, i) => {
+                              if (i === selectedSpiral) {
+                                return {
+                                  ...spiral,
+                                  coils: value,
+                                };
+                              }
+                              return spiral;
+                            })
+                          );
+                        } else {
+                          setDefaultCoils(value);
+                        }
+                      }}
                       className="w-full"
                     />
                   </div>
@@ -1318,9 +1393,9 @@ export const SpiralGenerator = () => {
                             Math.pow(currentPoint.y - startPoint.y, 2)
                         )
                       ),
-                      taperToCenter,
+                      taperToCenter: taperToCenter,
                       type: spiralType,
-                      sizeRatio,
+                      sizeRatio: sizeRatio,
                     }}
                     opacity={0.5}
                     previewThickness={lineThickness}
