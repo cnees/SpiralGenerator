@@ -24,7 +24,7 @@ export const SpiralGenerator = () => {
   const MIN_LINE_THICKNESS = 1;
   const MAX_LINE_THICKNESS = 50;
   const [snappingEnabled, setSnappingEnabled] = useState(true);
-  const [spiralType, setSpiralType] = useState('logarithmic');
+  const [spiralType, setSpiralType] = useState("logarithmic");
   const [taperToCenter, setTaperToCenter] = useState(true);
   const [sizeRatio, setSizeRatio] = useState(1.0);
   const [parentSpiral, setParentSpiral] = useState(null);
@@ -33,6 +33,7 @@ export const SpiralGenerator = () => {
   const [selectedEnd, setSelectedEnd] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
   const [hoveredEnd, setHoveredEnd] = useState(null);
+  const [spiralRelationships, setSpiralRelationships] = useState([]);
 
   const SPIRAL_TYPES = {
     LINE: "line",
@@ -408,6 +409,68 @@ export const SpiralGenerator = () => {
     ]
   );
 
+  const updateDescendants = (
+    parentIndex,
+    parentSpiral,
+    updatedSpirals,
+    relationships
+  ) => {
+    // Find all immediate children
+    const children = relationships.filter(
+      (rel) => rel.parentIndex === parentIndex
+    );
+
+    if (children.length === 0) return updatedSpirals;
+
+    // Update each child and their descendants
+    children.forEach((rel) => {
+      const childSpiral = updatedSpirals[rel.childIndex];
+      const attachPoint = getPointOnSpiral(rel.t, parentSpiral);
+
+      // Calculate new center point maintaining the relative angle
+      const parentAngle = Math.atan2(
+        parentSpiral.center.y - attachPoint.y,
+        parentSpiral.center.x - attachPoint.x
+      );
+      const newChildAngle = parentAngle + rel.angle;
+
+      // Calculate the distance between attachment point and child center
+      const childRadius = Math.hypot(
+        childSpiral.center.x - childSpiral.outer.x,
+        childSpiral.center.y - childSpiral.outer.y
+      );
+
+      // Calculate new child center position
+      const newChildCenter = {
+        x: attachPoint.x + childRadius * Math.cos(newChildAngle),
+        y: attachPoint.y + childRadius * Math.sin(newChildAngle),
+      };
+
+      // Update the child spiral
+      const updatedChild = {
+        ...childSpiral,
+        outer: {
+          ...childSpiral.outer,
+          x: attachPoint.x,
+          y: attachPoint.y,
+        },
+        center: newChildCenter,
+      };
+
+      updatedSpirals[rel.childIndex] = updatedChild;
+
+      // Recursively update this child's descendants
+      updatedSpirals = updateDescendants(
+        rel.childIndex,
+        updatedChild,
+        updatedSpirals,
+        relationships
+      );
+    });
+
+    return updatedSpirals;
+  };
+
   const handleMouseMove = useCallback(
     (e) => {
       const rect = e.currentTarget.getBoundingClientRect();
@@ -418,7 +481,7 @@ export const SpiralGenerator = () => {
       if (selectedTool === "select") {
         // Handle dragging
         if (isDragging && selectedSpiral !== null && selectedEnd) {
-          // Check for snap points when dragging
+          // Get mouse position and handle snapping
           let targetPoint = point;
           if (snappingEnabled) {
             const { point: snappedPoint } = findSnapPoint(point, false);
@@ -427,41 +490,46 @@ export const SpiralGenerator = () => {
             }
           }
 
-          setSpirals(
-            spirals.map((spiral, i) => {
-              if (i === selectedSpiral) {
-                if (selectedEnd === "center") {
-                  // Move only the center point
-                  return {
-                    ...spiral,
-                    center: {
-                      ...spiral.center,
-                      x: targetPoint.x,
-                      y: targetPoint.y,
-                    },
-                  };
-                } else {
-                  // Move the whole spiral when dragging outer point
-                  const dx = targetPoint.x - spiral.outer.x;
-                  const dy = targetPoint.y - spiral.outer.y;
-                  return {
-                    ...spiral,
-                    outer: {
-                      ...spiral.outer,
-                      x: targetPoint.x,
-                      y: targetPoint.y,
-                    },
-                    center: {
-                      ...spiral.center,
-                      x: spiral.center.x + dx,
-                      y: spiral.center.y + dy,
-                    },
-                  };
-                }
-              }
-              return spiral;
-            })
+          // Create a copy of spirals to work with
+          let updatedSpirals = [...spirals];
+
+          // Update the dragged spiral
+          if (selectedEnd === "center") {
+            updatedSpirals[selectedSpiral] = {
+              ...updatedSpirals[selectedSpiral],
+              center: {
+                ...updatedSpirals[selectedSpiral].center,
+                x: targetPoint.x,
+                y: targetPoint.y,
+              },
+            };
+          } else {
+            const dx = targetPoint.x - updatedSpirals[selectedSpiral].outer.x;
+            const dy = targetPoint.y - updatedSpirals[selectedSpiral].outer.y;
+            updatedSpirals[selectedSpiral] = {
+              ...updatedSpirals[selectedSpiral],
+              outer: {
+                ...updatedSpirals[selectedSpiral].outer,
+                x: targetPoint.x,
+                y: targetPoint.y,
+              },
+              center: {
+                ...updatedSpirals[selectedSpiral].center,
+                x: updatedSpirals[selectedSpiral].center.x + dx,
+                y: updatedSpirals[selectedSpiral].center.y + dy,
+              },
+            };
+          }
+
+          // Recursively update all descendants
+          updatedSpirals = updateDescendants(
+            selectedSpiral,
+            updatedSpirals[selectedSpiral],
+            updatedSpirals,
+            spiralRelationships
           );
+
+          setSpirals(updatedSpirals);
         }
 
         // Check for endpoint hovering
@@ -524,6 +592,7 @@ export const SpiralGenerator = () => {
       isDragging,
       spirals,
       endpointSnapRadius,
+      spiralRelationships,
     ]
   );
 
@@ -533,6 +602,7 @@ export const SpiralGenerator = () => {
         setIsDragging(false);
       } else {
         if (isDrawing && startPoint && currentPoint) {
+          const newSpiralIndex = spirals.length;
           setSpirals((prev) => [
             ...prev,
             {
@@ -553,6 +623,37 @@ export const SpiralGenerator = () => {
               sizeRatio,
             },
           ]);
+
+          // If snapped to another spiral, store the relationship with angle
+          if (snappedSpiral) {
+            const parentIndex = spirals.findIndex((s) => s === snappedSpiral);
+            if (parentIndex !== -1) {
+              // Calculate t value along parent spiral
+              const t = findTValueOnSpiral(startPoint, snappedSpiral);
+
+              // Calculate relative angle between parent and child
+              const parentAngle = Math.atan2(
+                snappedSpiral.center.y - startPoint.y,
+                snappedSpiral.center.x - startPoint.x
+              );
+              const childAngle = Math.atan2(
+                currentPoint.y - startPoint.y,
+                currentPoint.x - startPoint.x
+              );
+              const relativeAngle = childAngle - parentAngle;
+
+              setSpiralRelationships((prev) => [
+                ...prev,
+                {
+                  childIndex: newSpiralIndex,
+                  parentIndex,
+                  t,
+                  angle: relativeAngle,
+                },
+              ]);
+            }
+          }
+
           setUndoStack([...undoStack, spirals]);
           setRedoStack([]);
         }
@@ -575,6 +676,8 @@ export const SpiralGenerator = () => {
       spiralType,
       sizeRatio,
       lineThickness,
+      snappedSpiral,
+      spiralRelationships,
     ]
   );
 
@@ -749,6 +852,7 @@ export const SpiralGenerator = () => {
         setSelectedTool("select");
       } else if (e.key.toLowerCase() === "b") {
         setSelectedTool("spiral");
+        setSelectedSpiral(null);
       }
     },
     [
@@ -1008,12 +1112,72 @@ export const SpiralGenerator = () => {
     return result;
   };
 
+  // Add function to get all descendants of a spiral
+  const getAllDescendants = (spiralIndex) => {
+    const descendants = new Set();
+    const toProcess = [spiralIndex];
+
+    while (toProcess.length > 0) {
+      const currentIndex = toProcess.pop();
+      const children = spiralRelationships
+        .filter((rel) => rel.parentIndex === currentIndex)
+        .map((rel) => rel.childIndex);
+
+      children.forEach((childIndex) => {
+        if (!descendants.has(childIndex)) {
+          descendants.add(childIndex);
+          toProcess.push(childIndex);
+        }
+      });
+    }
+
+    return descendants;
+  };
+
+  // Add function to get the root spiral of a tree
+  const getRootSpiral = (spiralIndex) => {
+    let currentIndex = spiralIndex;
+    const visited = new Set();
+
+    while (currentIndex !== null && !visited.has(currentIndex)) {
+      visited.add(currentIndex);
+      const relationship = spiralRelationships.find(
+        (rel) => rel.childIndex === currentIndex
+      );
+      if (!relationship) return currentIndex;
+      currentIndex = relationship.parentIndex;
+    }
+
+    return currentIndex;
+  };
+
+  // Modify isDescendantOfSelected to handle multiple trees
+  const isDescendantOfSelected = (spiralIndex) => {
+    if (selectedSpiral === null) return false;
+
+    // Get root of selected spiral's tree
+    const selectedRoot = getRootSpiral(selectedSpiral);
+    // Get root of this spiral's tree
+    const thisRoot = getRootSpiral(spiralIndex);
+
+    // If they're not in the same tree, return false
+    if (selectedRoot !== thisRoot) return false;
+
+    // Get all descendants of selected spiral
+    const descendants = getAllDescendants(selectedSpiral);
+    return descendants.has(spiralIndex);
+  };
+
+  // Modify the SpiralPath component
   const SpiralPath = ({
     spiral,
     opacity = 1,
     previewThickness,
     isSelected,
+    index,
   }) => {
+    const isDescendant = isDescendantOfSelected(index);
+
     const segments = generateTaperedSpiralSegments(
       spiral.outer,
       spiral.center,
@@ -1028,18 +1192,18 @@ export const SpiralGenerator = () => {
 
     return (
       <>
-        {segments.map((segment, index) => (
+        {segments.map((segment, segIndex) => (
           <path
-            key={index}
+            key={segIndex}
             d={`M ${segment.points.map((p) => `${p.x},${p.y}`).join(" L ")}`}
             fill="none"
-            stroke={isSelected ? "orange" : "blue"}
+            stroke={isSelected || isDescendant ? "orange" : "blue"}
             strokeWidth={segment.thickness}
             opacity={opacity}
           />
         ))}
 
-        {/* Add endpoint indicators when in select mode */}
+        {/* Add endpoint indicators only for selected spiral */}
         {selectedTool === "select" && isSelected && (
           <>
             {/* Outer endpoint */}
@@ -1086,13 +1250,55 @@ export const SpiralGenerator = () => {
             ? "bg-blue-500 text-white"
             : "hover:bg-gray-100 text-gray-700"
         }`}
-        onClick={() => setSelectedTool("spiral")}
+        onClick={() => {
+          setSelectedTool("spiral");
+          setSelectedSpiral(null);
+        }}
         title="Spiral Tool (B)"
       >
         B
       </button>
     </div>
   );
+
+  const findTValueOnSpiral = (point, spiral) => {
+    const points = generateSpiralPointsByType(
+      spiral.outer,
+      spiral.center,
+      spiral.clockwise,
+      spiral.coils,
+      spiral.type,
+      spiral
+    );
+
+    // Find closest point on spiral
+    let minDist = Infinity;
+    let closestT = 0;
+
+    points.forEach((p, i) => {
+      const dist = Math.hypot(point.x - p.x, point.y - p.y);
+      if (dist < minDist) {
+        minDist = dist;
+        closestT = i / (points.length - 1);
+      }
+    });
+
+    return closestT;
+  };
+
+  const getPointOnSpiral = (t, spiral) => {
+    const points = generateSpiralPointsByType(
+      spiral.outer,
+      spiral.center,
+      spiral.clockwise,
+      spiral.coils,
+      spiral.type,
+      spiral
+    );
+
+    const index = Math.round(t * (points.length - 1));
+    return points[index];
+  };
 
   return (
     <div className="p-4 bg-gray-50 min-h-screen">
@@ -1374,6 +1580,7 @@ export const SpiralGenerator = () => {
                   key={index}
                   spiral={spiral}
                   isSelected={index === selectedSpiral}
+                  index={index}
                 />
               ))}
 
