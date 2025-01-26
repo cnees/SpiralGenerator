@@ -28,14 +28,19 @@ export const SpiralGenerator = () => {
   const [taperToCenter, setTaperToCenter] = useState(true);
   const [sizeRatio, setSizeRatio] = useState(1.0);
   const [parentSpiral, setParentSpiral] = useState(null);
+  const [selectedTool, setSelectedTool] = useState("spiral");
+  const [selectedSpiral, setSelectedSpiral] = useState(null);
+  const [selectedEnd, setSelectedEnd] = useState(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [hoveredEnd, setHoveredEnd] = useState(null);
 
   const SPIRAL_TYPES = {
-    LINE: 'line',
-    LOGARITHMIC: 'logarithmic',
-    ARCHIMEDES: 'archimedes',
-    HYPERBOLIC: 'hyperbolic',
-    FERMAT: 'fermat',
-    S_CURVE: 's_curve'
+    LINE: "line",
+    LOGARITHMIC: "logarithmic",
+    ARCHIMEDES: "archimedes",
+    HYPERBOLIC: "hyperbolic",
+    FERMAT: "fermat",
+    S_CURVE: "s_curve",
   };
 
   const generateSpiralPoints = (outer, center, clockwise = true, coils = 3) => {
@@ -263,90 +268,143 @@ export const SpiralGenerator = () => {
       const y = e.clientY - rect.top;
       const point = { x, y };
 
-      if (snappingEnabled) {
-        // Find closest spiral and point
-        let closestDist = Infinity;
-        let closestSpiral = null;
-        let closestPoint = null;
-
-        for (const spiral of spirals) {
-          // Check center point
-          const dx = point.x - spiral.center.x;
-          const dy = point.y - spiral.center.y;
-          const distance = Math.sqrt(dx * dx + dy * dy);
-
-          if (distance <= centerSnapRadius && distance < closestDist) {
-            closestDist = distance;
-            closestSpiral = spiral;
-            closestPoint = spiral.center;
-          }
-
-          // Check outer point
-          const dxOuter = point.x - spiral.outer.x;
-          const dyOuter = point.y - spiral.outer.y;
-          const distanceOuter = Math.sqrt(
-            dxOuter * dxOuter + dyOuter * dyOuter
+      if (selectedTool === "select") {
+        if (selectedSpiral !== null) {
+          const spiral = spirals[selectedSpiral];
+          const outerDist = Math.hypot(
+            point.x - spiral.outer.x,
+            point.y - spiral.outer.y
+          );
+          const centerDist = Math.hypot(
+            point.x - spiral.center.x,
+            point.y - spiral.center.y
           );
 
-          if (
-            distanceOuter <= endpointSnapRadius &&
-            distanceOuter < closestDist
-          ) {
-            closestDist = distanceOuter;
-            closestSpiral = spiral;
-            closestPoint = spiral.outer;
+          if (outerDist <= endpointSnapRadius) {
+            setSelectedEnd("outer");
+            setIsDragging(true);
+            return;
           }
+          if (centerDist <= endpointSnapRadius) {
+            setSelectedEnd("center");
+            setIsDragging(true);
+            return;
+          }
+        }
 
-          // Check points along the spiral
-          const spiralPoints = generateSpiralPoints(
+        for (let i = spirals.length - 1; i >= 0; i--) {
+          const spiral = spirals[i];
+          const points = generateSpiralPointsByType(
             spiral.outer,
             spiral.center,
             spiral.clockwise,
-            spiral.coils || 3
+            spiral.coils,
+            spiral.type,
+            spiral
           );
 
-          for (let i = 0; i < spiralPoints.length - 1; i++) {
+          for (let j = 0; j < points.length - 1; j++) {
             const result = distanceToLineSegment(
               point,
-              spiralPoints[i],
-              spiralPoints[i + 1]
+              points[j],
+              points[j + 1]
             );
-            if (
-              result.distance <= endpointSnapRadius &&
-              result.distance < closestDist
-            ) {
-              closestDist = result.distance;
-              closestSpiral = spiral;
-              closestPoint = result.point;
+            if (result.distance <= endpointSnapRadius) {
+              setSelectedSpiral(i);
+              setSelectedEnd(null);
+              return;
             }
           }
         }
 
-        if (closestSpiral && closestPoint) {
-          setParentSpiral(closestSpiral);
-          setStartPoint({
-            ...closestPoint,
-            thickness: lineThickness,
-          });
-          setIsDrawing(true);
-          return;
-        }
-      }
+        setSelectedSpiral(null);
+        setSelectedEnd(null);
+      } else {
+        if (snappingEnabled) {
+          // Find closest spiral and point
+          let closestDist = Infinity;
+          let closestSpiral = null;
+          let closestPoint = null;
 
-      // If no snap point found, use raw point and clear parent spiral
-      setParentSpiral(null);
-      setStartPoint({
-        ...point,
-        thickness: lineThickness,
-      });
-      setIsDrawing(true);
+          for (const spiral of spirals) {
+            // Check center point
+            const dx = point.x - spiral.center.x;
+            const dy = point.y - spiral.center.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            if (distance <= centerSnapRadius && distance < closestDist) {
+              closestDist = distance;
+              closestSpiral = spiral;
+              closestPoint = spiral.center;
+            }
+
+            // Check outer point
+            const dxOuter = point.x - spiral.outer.x;
+            const dyOuter = point.y - spiral.outer.y;
+            const distanceOuter = Math.sqrt(
+              dxOuter * dxOuter + dyOuter * dyOuter
+            );
+
+            if (
+              distanceOuter <= endpointSnapRadius &&
+              distanceOuter < closestDist
+            ) {
+              closestDist = distanceOuter;
+              closestSpiral = spiral;
+              closestPoint = spiral.outer;
+            }
+
+            // Check points along the spiral
+            const spiralPoints = generateSpiralPoints(
+              spiral.outer,
+              spiral.center,
+              spiral.clockwise,
+              spiral.coils || 3
+            );
+
+            for (let i = 0; i < spiralPoints.length - 1; i++) {
+              const result = distanceToLineSegment(
+                point,
+                spiralPoints[i],
+                spiralPoints[i + 1]
+              );
+              if (
+                result.distance <= endpointSnapRadius &&
+                result.distance < closestDist
+              ) {
+                closestDist = result.distance;
+                closestSpiral = spiral;
+                closestPoint = result.point;
+              }
+            }
+          }
+
+          if (closestSpiral && closestPoint) {
+            setParentSpiral(closestSpiral);
+            setStartPoint({
+              ...closestPoint,
+              thickness: lineThickness,
+            });
+            setIsDrawing(true);
+            return;
+          }
+        }
+
+        // If no snap point found, use raw point and clear parent spiral
+        setParentSpiral(null);
+        setStartPoint({
+          ...point,
+          thickness: lineThickness,
+        });
+        setIsDrawing(true);
+      }
     },
     [
-      snappingEnabled,
-      lineThickness,
+      selectedTool,
+      selectedSpiral,
       spirals,
-      centerSnapRadius,
       endpointSnapRadius,
+      centerSnapRadius,
     ]
   );
 
@@ -357,66 +415,156 @@ export const SpiralGenerator = () => {
       const y = e.clientY - rect.top;
       const point = { x, y };
 
-      if (isDrawing) {
-        if (snappingEnabled) {
-          const { point: snappedPoint, spiral } = findSnapPoint(point, false);
-          if (snappedPoint) {
-            setCurrentPoint(snappedPoint);
-            setSnapPoint(snappedPoint);
-            setSnappedSpiral(spiral);
-            return;
+      if (selectedTool === "select") {
+        // Handle dragging
+        if (isDragging && selectedSpiral !== null && selectedEnd) {
+          // Check for snap points when dragging
+          let targetPoint = point;
+          if (snappingEnabled) {
+            const { point: snappedPoint } = findSnapPoint(point, false);
+            if (snappedPoint) {
+              targetPoint = snappedPoint;
+            }
+          }
+
+          setSpirals(
+            spirals.map((spiral, i) => {
+              if (i === selectedSpiral) {
+                if (selectedEnd === "center") {
+                  // Move only the center point
+                  return {
+                    ...spiral,
+                    center: {
+                      ...spiral.center,
+                      x: targetPoint.x,
+                      y: targetPoint.y,
+                    },
+                  };
+                } else {
+                  // Move the whole spiral when dragging outer point
+                  const dx = targetPoint.x - spiral.outer.x;
+                  const dy = targetPoint.y - spiral.outer.y;
+                  return {
+                    ...spiral,
+                    outer: {
+                      ...spiral.outer,
+                      x: targetPoint.x,
+                      y: targetPoint.y,
+                    },
+                    center: {
+                      ...spiral.center,
+                      x: spiral.center.x + dx,
+                      y: spiral.center.y + dy,
+                    },
+                  };
+                }
+              }
+              return spiral;
+            })
+          );
+        }
+
+        // Check for endpoint hovering
+        let foundHover = false;
+        if (selectedSpiral !== null) {
+          const spiral = spirals[selectedSpiral];
+          const outerDist = Math.hypot(
+            point.x - spiral.outer.x,
+            point.y - spiral.outer.y
+          );
+          const centerDist = Math.hypot(
+            point.x - spiral.center.x,
+            point.y - spiral.center.y
+          );
+
+          if (outerDist <= endpointSnapRadius) {
+            setHoveredEnd("outer");
+            foundHover = true;
+          } else if (centerDist <= endpointSnapRadius) {
+            setHoveredEnd("center");
+            foundHover = true;
           }
         }
-        setCurrentPoint(point);
-        setSnapPoint(null);
-        setSnappedSpiral(null);
-      } else {
-        if (snappingEnabled) {
-          const { point: snappedPoint, spiral } = findSnapPoint(point, false);
-          setSnapPoint(snappedPoint);
-          setSnappedSpiral(spiral);
-        } else {
+
+        if (!foundHover && !isDragging) {
+          setHoveredEnd(null);
+        }
+      } else if (selectedTool === "spiral") {
+        if (isDrawing) {
+          if (snappingEnabled) {
+            const { point: snappedPoint, spiral } = findSnapPoint(point, false);
+            if (snappedPoint) {
+              setCurrentPoint(snappedPoint);
+              setSnapPoint(snappedPoint);
+              setSnappedSpiral(spiral);
+              return;
+            }
+          }
+          setCurrentPoint(point);
           setSnapPoint(null);
           setSnappedSpiral(null);
+        } else {
+          if (snappingEnabled) {
+            const { point: snappedPoint, spiral } = findSnapPoint(point, false);
+            setSnapPoint(snappedPoint);
+            setSnappedSpiral(spiral);
+          } else {
+            setSnapPoint(null);
+            setSnappedSpiral(null);
+          }
         }
       }
     },
-    [isDrawing, snappingEnabled]
+    [
+      selectedTool,
+      isDrawing,
+      snappingEnabled,
+      selectedSpiral,
+      selectedEnd,
+      isDragging,
+      spirals,
+      endpointSnapRadius,
+    ]
   );
 
   const handleMouseUp = useCallback(
     (e) => {
-      if (isDrawing && startPoint && currentPoint) {
-        setSpirals((prev) => [
-          ...prev,
-          {
-            outer: {
-              ...startPoint,
-              thickness: lineThickness,
+      if (selectedTool === "select") {
+        setIsDragging(false);
+      } else {
+        if (isDrawing && startPoint && currentPoint) {
+          setSpirals((prev) => [
+            ...prev,
+            {
+              outer: {
+                ...startPoint,
+                thickness: lineThickness,
+              },
+              center: currentPoint,
+              clockwise: isClockwise,
+              coils: getCoilsForSize(
+                Math.sqrt(
+                  Math.pow(currentPoint.x - startPoint.x, 2) +
+                    Math.pow(currentPoint.y - startPoint.y, 2)
+                )
+              ),
+              taperToCenter,
+              type: spiralType,
+              sizeRatio,
             },
-            center: currentPoint,
-            clockwise: isClockwise,
-            coils: getCoilsForSize(
-              Math.sqrt(
-                Math.pow(currentPoint.x - startPoint.x, 2) +
-                  Math.pow(currentPoint.y - startPoint.y, 2)
-              )
-            ),
-            taperToCenter,
-            type: spiralType,
-            sizeRatio,
-          },
-        ]);
-        setUndoStack([...undoStack, spirals]);
-        setRedoStack([]);
+          ]);
+          setUndoStack([...undoStack, spirals]);
+          setRedoStack([]);
+        }
+        setIsDrawing(false);
+        setStartPoint(null);
+        setCurrentPoint(null);
+        setSnapPoint(null);
+        setSnappedSpiral(null);
       }
-      setIsDrawing(false);
-      setStartPoint(null);
-      setCurrentPoint(null);
-      setSnapPoint(null);
-      setSnappedSpiral(null);
     },
     [
+      selectedTool,
       isDrawing,
       startPoint,
       currentPoint,
@@ -578,6 +726,10 @@ export const SpiralGenerator = () => {
         setSizeRatio((prev) => Math.max(0, prev - 0.1));
       } else if (e.key === "c" || e.key === "C") {
         setSizeRatio((prev) => Math.min(3.0, prev + 0.1));
+      } else if (e.key.toLowerCase() === "v") {
+        setSelectedTool("select");
+      } else if (e.key.toLowerCase() === "b") {
+        setSelectedTool("spiral");
       }
     },
     [
@@ -591,6 +743,7 @@ export const SpiralGenerator = () => {
       startPoint,
       currentPoint,
       parentSpiral,
+      selectedTool,
     ]
   );
 
@@ -835,7 +988,12 @@ export const SpiralGenerator = () => {
     return result;
   };
 
-  const SpiralPath = ({ spiral, opacity = 1, previewThickness }) => {
+  const SpiralPath = ({
+    spiral,
+    opacity = 1,
+    previewThickness,
+    isSelected,
+  }) => {
     const segments = generateTaperedSpiralSegments(
       spiral.outer,
       spiral.center,
@@ -855,17 +1013,70 @@ export const SpiralGenerator = () => {
             key={index}
             d={`M ${segment.points.map((p) => `${p.x},${p.y}`).join(" L ")}`}
             fill="none"
-            stroke="blue"
+            stroke={isSelected ? "orange" : "blue"}
             strokeWidth={segment.thickness}
             opacity={opacity}
           />
         ))}
+
+        {/* Add endpoint indicators when in select mode */}
+        {selectedTool === "select" && isSelected && (
+          <>
+            {/* Outer endpoint */}
+            <circle
+              cx={spiral.outer.x}
+              cy={spiral.outer.y}
+              r={4}
+              fill={hoveredEnd === "outer" ? "yellow" : "white"}
+              stroke="orange"
+              strokeWidth="2"
+            />
+
+            {/* Center endpoint */}
+            <circle
+              cx={spiral.center.x}
+              cy={spiral.center.y}
+              r={4}
+              fill={hoveredEnd === "center" ? "yellow" : "white"}
+              stroke="orange"
+              strokeWidth="2"
+            />
+          </>
+        )}
       </>
     );
   };
 
+  const Toolbar = () => (
+    <div className="fixed left-4 top-1/2 -translate-y-1/2 bg-white p-1 rounded-lg shadow space-y-1">
+      <button
+        className={`w-[30px] h-[30px] rounded flex items-center justify-center font-medium text-sm ${
+          selectedTool === "select"
+            ? "bg-blue-500 text-white"
+            : "hover:bg-gray-100 text-gray-700"
+        }`}
+        onClick={() => setSelectedTool("select")}
+        title="Select Tool (V)"
+      >
+        V
+      </button>
+      <button
+        className={`w-[30px] h-[30px] rounded flex items-center justify-center font-medium text-sm ${
+          selectedTool === "spiral"
+            ? "bg-blue-500 text-white"
+            : "hover:bg-gray-100 text-gray-700"
+        }`}
+        onClick={() => setSelectedTool("spiral")}
+        title="Spiral Tool (B)"
+      >
+        B
+      </button>
+    </div>
+  );
+
   return (
     <div className="p-4 bg-gray-50 min-h-screen">
+      <Toolbar />
       <div className="max-w-[1800px] mx-auto">
         <h1 className="text-2xl font-bold mb-6 text-gray-800">
           Spiral Generator
@@ -1084,7 +1295,11 @@ export const SpiralGenerator = () => {
               className="w-full h-full min-h-[800px] border rounded"
             >
               {spirals.map((spiral, index) => (
-                <SpiralPath key={index} spiral={spiral} />
+                <SpiralPath
+                  key={index}
+                  spiral={spiral}
+                  isSelected={index === selectedSpiral}
+                />
               ))}
 
               {isDrawing && startPoint && currentPoint && (
