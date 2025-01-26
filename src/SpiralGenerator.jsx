@@ -415,60 +415,63 @@ export const SpiralGenerator = () => {
     updatedSpirals,
     relationships
   ) => {
-    // Find all immediate children
-    const children = relationships.filter(
-      (rel) => rel.parentIndex === parentIndex
-    );
+    // Add visited set to prevent cycles
+    const visited = new Set();
 
-    if (children.length === 0) return updatedSpirals;
+    const updateDescendantsHelper = (currentIndex, currentSpiral) => {
+      if (!currentSpiral || visited.has(currentIndex)) return updatedSpirals;
+      visited.add(currentIndex);
 
-    // Update each child and their descendants
-    children.forEach((rel) => {
-      const childSpiral = updatedSpirals[rel.childIndex];
-      const attachPoint = getPointOnSpiral(rel.t, parentSpiral);
-
-      // Calculate new center point maintaining the relative angle
-      const parentAngle = Math.atan2(
-        parentSpiral.center.y - attachPoint.y,
-        parentSpiral.center.x - attachPoint.x
-      );
-      const newChildAngle = parentAngle + rel.angle;
-
-      // Calculate the distance between attachment point and child center
-      const childRadius = Math.hypot(
-        childSpiral.center.x - childSpiral.outer.x,
-        childSpiral.center.y - childSpiral.outer.y
+      // Find all immediate children
+      const children = relationships.filter(
+        (rel) => rel.parentIndex === currentIndex
       );
 
-      // Calculate new child center position
-      const newChildCenter = {
-        x: attachPoint.x + childRadius * Math.cos(newChildAngle),
-        y: attachPoint.y + childRadius * Math.sin(newChildAngle),
-      };
+      children.forEach((rel) => {
+        const childSpiral = updatedSpirals[rel.childIndex];
+        // Skip if child spiral doesn't exist
+        if (!childSpiral) return;
 
-      // Update the child spiral
-      const updatedChild = {
-        ...childSpiral,
-        outer: {
-          ...childSpiral.outer,
-          x: attachPoint.x,
-          y: attachPoint.y,
-        },
-        center: newChildCenter,
-      };
+        const attachPoint = getPointOnSpiral(rel.t, currentSpiral);
+        if (!attachPoint) return; // Skip if we can't get attachment point
 
-      updatedSpirals[rel.childIndex] = updatedChild;
+        // Calculate new center point maintaining the relative angle
+        const parentAngle = Math.atan2(
+          currentSpiral.center.y - attachPoint.y,
+          currentSpiral.center.x - attachPoint.x
+        );
+        const newChildAngle = parentAngle + rel.angle;
 
-      // Recursively update this child's descendants
-      updatedSpirals = updateDescendants(
-        rel.childIndex,
-        updatedChild,
-        updatedSpirals,
-        relationships
-      );
-    });
+        // Calculate the distance between attachment point and child center
+        const childRadius = Math.hypot(
+          childSpiral.center.x - childSpiral.outer.x,
+          childSpiral.center.y - childSpiral.outer.y
+        );
 
-    return updatedSpirals;
+        // Update the child spiral
+        const updatedChild = {
+          ...childSpiral,
+          outer: {
+            ...childSpiral.outer,
+            x: attachPoint.x,
+            y: attachPoint.y,
+          },
+          center: {
+            x: attachPoint.x + childRadius * Math.cos(newChildAngle),
+            y: attachPoint.y + childRadius * Math.sin(newChildAngle),
+          },
+        };
+
+        updatedSpirals[rel.childIndex] = updatedChild;
+
+        // Recursively update this child's descendants
+        updateDescendantsHelper(rel.childIndex, updatedChild);
+      });
+
+      return updatedSpirals;
+    };
+
+    return updateDescendantsHelper(parentIndex, parentSpiral);
   };
 
   const handleMouseMove = useCallback(
@@ -479,14 +482,23 @@ export const SpiralGenerator = () => {
       const point = { x, y };
 
       if (selectedTool === "select") {
-        // Handle dragging
         if (isDragging && selectedSpiral !== null && selectedEnd) {
           // Get mouse position and handle snapping
           let targetPoint = point;
-          if (snappingEnabled) {
-            const { point: snappedPoint } = findSnapPoint(point, false);
-            if (snappedPoint) {
-              targetPoint = snappedPoint;
+          let newParentSpiral = null;
+
+          if (snappingEnabled && selectedEnd === "outer") {
+            const { point: snappedPoint, spiral: snapTarget } = findSnapPoint(
+              point,
+              false
+            );
+            if (snappedPoint && snapTarget) {
+              // Don't allow snapping to own descendants to prevent cycles
+              const descendants = getAllDescendants(selectedSpiral);
+              if (!descendants.has(spirals.indexOf(snapTarget))) {
+                targetPoint = snappedPoint;
+                newParentSpiral = snapTarget;
+              }
             }
           }
 
@@ -519,16 +531,147 @@ export const SpiralGenerator = () => {
                 y: updatedSpirals[selectedSpiral].center.y + dy,
               },
             };
+
+            // Update spiral relationships if we snapped to a new parent
+            if (newParentSpiral) {
+              setSpiralRelationships((prev) => {
+                // Remove any existing relationship where this spiral is the child
+                const filtered = prev.filter(
+                  (rel) => rel.childIndex !== selectedSpiral
+                );
+
+                // Calculate t value along parent spiral
+                const t = findTValueOnSpiral(targetPoint, newParentSpiral);
+
+                // Calculate parent angle from its center to the snap point
+                const parentAngle = Math.atan2(
+                  newParentSpiral.center.y - targetPoint.y,
+                  newParentSpiral.center.x - targetPoint.x
+                );
+
+                // Calculate the current angle of the child spiral relative to its outer point
+                const childSpiral = updatedSpirals[selectedSpiral];
+                const childVectorX = childSpiral.center.x - childSpiral.outer.x;
+                const childVectorY = childSpiral.center.y - childSpiral.outer.y;
+                const childAngle = Math.atan2(childVectorY, childVectorX);
+
+                // Calculate relative angle while preserving the child's current orientation
+                const relativeAngle =
+                  ((childAngle - parentAngle + 3 * Math.PI) % (2 * Math.PI)) -
+                  Math.PI;
+
+                // Add new relationship
+                const newParentIndex = spirals.findIndex(
+                  (s) => s === newParentSpiral
+                );
+                return [
+                  ...filtered,
+                  {
+                    childIndex: selectedSpiral,
+                    parentIndex: newParentIndex,
+                    t,
+                    angle: relativeAngle,
+                  },
+                ];
+              });
+            }
           }
 
-          // Recursively update all descendants
-          updatedSpirals = updateDescendants(
-            selectedSpiral,
-            updatedSpirals[selectedSpiral],
-            updatedSpirals,
-            spiralRelationships
+          // After updating the spiral's position, update its relationship angle if it's a child
+          const relationship = spiralRelationships.find(
+            (rel) => rel.childIndex === selectedSpiral
           );
+          if (relationship) {
+            setSpiralRelationships((prev) =>
+              prev.map((rel) => {
+                if (rel.childIndex === selectedSpiral) {
+                  const parentSpiral = spirals[rel.parentIndex];
+                  const childSpiral = updatedSpirals[selectedSpiral];
+                  const attachPoint = getPointOnSpiral(rel.t, parentSpiral);
 
+                  // Calculate parent angle from its center to the attachment point
+                  const parentAngle = Math.atan2(
+                    parentSpiral.center.y - attachPoint.y,
+                    parentSpiral.center.x - attachPoint.x
+                  );
+
+                  // Calculate the current angle of the child spiral relative to its outer point
+                  const childVectorX =
+                    childSpiral.center.x - childSpiral.outer.x;
+                  const childVectorY =
+                    childSpiral.center.y - childSpiral.outer.y;
+                  const childAngle = Math.atan2(childVectorY, childVectorX);
+
+                  // Calculate new relative angle
+                  const relativeAngle =
+                    ((childAngle - parentAngle + 3 * Math.PI) % (2 * Math.PI)) -
+                    Math.PI;
+
+                  return {
+                    ...rel,
+                    angle: relativeAngle,
+                  };
+                }
+                return rel;
+              })
+            );
+          }
+
+          // Recursively update all descendants using the visited set to prevent cycles
+          const visited = new Set();
+          const updateDescendantsWithCycleCheck = (
+            parentIndex,
+            parentSpiral
+          ) => {
+            if (visited.has(parentIndex)) return updatedSpirals;
+            visited.add(parentIndex);
+
+            const children = spiralRelationships.filter(
+              (rel) => rel.parentIndex === parentIndex
+            );
+            children.forEach((rel) => {
+              if (!visited.has(rel.childIndex)) {
+                const childSpiral = updatedSpirals[rel.childIndex];
+                const attachPoint = getPointOnSpiral(rel.t, parentSpiral);
+
+                const parentAngle = Math.atan2(
+                  parentSpiral.center.y - attachPoint.y,
+                  parentSpiral.center.x - attachPoint.x
+                );
+                const newChildAngle = parentAngle + rel.angle;
+
+                const childRadius = Math.hypot(
+                  childSpiral.center.x - childSpiral.outer.x,
+                  childSpiral.center.y - childSpiral.outer.y
+                );
+
+                updatedSpirals[rel.childIndex] = {
+                  ...childSpiral,
+                  outer: {
+                    ...childSpiral.outer,
+                    x: attachPoint.x,
+                    y: attachPoint.y,
+                  },
+                  center: {
+                    x: attachPoint.x + childRadius * Math.cos(newChildAngle),
+                    y: attachPoint.y + childRadius * Math.sin(newChildAngle),
+                  },
+                };
+
+                updateDescendantsWithCycleCheck(
+                  rel.childIndex,
+                  updatedSpirals[rel.childIndex]
+                );
+              }
+            });
+
+            return updatedSpirals;
+          };
+
+          updatedSpirals = updateDescendantsWithCycleCheck(
+            selectedSpiral,
+            updatedSpirals[selectedSpiral]
+          );
           setSpirals(updatedSpirals);
         }
 
