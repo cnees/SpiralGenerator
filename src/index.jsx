@@ -1,8 +1,7 @@
-import React from 'react';
-import ReactDOM from 'react-dom/client';
+import React from "react";
+import { createRoot } from "react-dom/client";
+import { SpiralGenerator } from "./components/SpiralGenerator";
+import "./style.css";
 
-import { SpiralGenerator } from './SpiralGenerator.jsx';
-
-ReactDOM.createRoot(document.querySelector('#root')).render(
-  <SpiralGenerator />
-);
+const root = createRoot(document.getElementById("root"));
+root.render(<SpiralGenerator />);

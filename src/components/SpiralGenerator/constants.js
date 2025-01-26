@@ -1,0 +1,21 @@
+export const SPIRAL_TYPES = {
+  LINE: "line",
+  LOGARITHMIC: "logarithmic",
+  ARCHIMEDES: "archimedes",
+  HYPERBOLIC: "hyperbolic",
+  FERMAT: "fermat",
+  S_CURVE: "s_curve",
+};
+
+export const DEFAULT_VALUES = {
+  COIL_ADJUST_SPEED: 0.05,
+  MIN_COILS: 0.1,
+  MAX_COILS: 10,
+  LINE_ADJUST_SPEED: 0.2,
+  MIN_LINE_THICKNESS: 0.5,
+  MAX_LINE_THICKNESS: 10,
+  DEFAULT_COILS: 3,
+  SNAP_RADIUS: 10,
+  ENDPOINT_SNAP_RADIUS: 30,
+  CENTER_SNAP_RADIUS: 50,
+};
