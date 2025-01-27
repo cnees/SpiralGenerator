@@ -31,7 +31,44 @@ export const useKeyboardControls = ({
 }) => {
   const handleKeyDown = useCallback(
     (e) => {
-      if (e.metaKey && !e.shiftKey && e.key === "z") {
+      if (e.target.tagName === "INPUT") return;
+
+      setHeldKeys((prev) => new Set([...prev, e.key]));
+
+      if (e.key.toLowerCase() === "w") {
+        e.preventDefault();
+        const newThickness = Math.min(
+          DEFAULT_VALUES.MAX_LINE_THICKNESS,
+          lineThickness + DEFAULT_VALUES.LINE_ADJUST_SPEED
+        );
+        setLineThickness(newThickness);
+      } else if (e.key.toLowerCase() === "a") {
+        e.preventDefault();
+        if (selectedSpiral !== null) {
+          setSpirals(
+            spirals.map((spiral, i) => {
+              if (i === selectedSpiral) {
+                return {
+                  ...spiral,
+                  coils: Math.max(
+                    DEFAULT_VALUES.MIN_COILS,
+                    (spiral.coils || DEFAULT_VALUES.DEFAULT_COILS) -
+                      DEFAULT_VALUES.COIL_ADJUST_SPEED
+                  ),
+                };
+              }
+              return spiral;
+            })
+          );
+        } else {
+          setDefaultCoils(
+            Math.max(
+              DEFAULT_VALUES.MIN_COILS,
+              defaultCoils - DEFAULT_VALUES.COIL_ADJUST_SPEED
+            )
+          );
+        }
+      } else if (e.metaKey && !e.shiftKey && e.key === "z") {
         e.preventDefault();
         if (undoStack.length > 0) {
           const previousState = undoStack[undoStack.length - 1];
@@ -90,7 +127,6 @@ export const useKeyboardControls = ({
         }
       } else if (["w", "a", "s", "d"].includes(e.key.toLowerCase())) {
         e.preventDefault();
-        setHeldKeys((prev) => new Set([...prev, e.key.toLowerCase()]));
       } else if (e.key === "z" || e.key === "Z") {
         setSizeRatio((prev) => Math.max(0, prev - 0.1));
       } else if (e.key === "c" || e.key === "C") {
@@ -113,6 +149,11 @@ export const useKeyboardControls = ({
       snappingEnabled,
       sizeRatio,
       selectedTool,
+      lineThickness,
+      setLineThickness,
+      defaultCoils,
+      setDefaultCoils,
+      setSpirals,
     ]
   );
 

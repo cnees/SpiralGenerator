@@ -108,44 +108,19 @@ export const ControlPanel = ({
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Line Thickness:{" "}
-                {selectedSpiral !== null
-                  ? (
-                      spirals[selectedSpiral].outer.thickness || lineThickness
-                    ).toFixed(1)
-                  : lineThickness.toFixed(1)}
-                px <span className="text-gray-500 text-xs">(W/S)</span>
+                {(lineThickness || DEFAULT_VALUES.MIN_LINE_THICKNESS).toFixed(
+                  1
+                )}
+                px
+                <span className="text-gray-500 text-xs">(W/S)</span>
               </label>
               <input
                 type="range"
                 min={DEFAULT_VALUES.MIN_LINE_THICKNESS}
                 max={DEFAULT_VALUES.MAX_LINE_THICKNESS}
                 step="0.1"
-                value={
-                  selectedSpiral !== null
-                    ? spirals[selectedSpiral].outer.thickness || lineThickness
-                    : lineThickness
-                }
-                onChange={(e) => {
-                  const value = Number(e.target.value);
-                  if (selectedSpiral !== null) {
-                    setSpirals(
-                      spirals.map((spiral, i) => {
-                        if (i === selectedSpiral) {
-                          return {
-                            ...spiral,
-                            outer: {
-                              ...spiral.outer,
-                              thickness: value,
-                            },
-                          };
-                        }
-                        return spiral;
-                      })
-                    );
-                  } else {
-                    setLineThickness(value);
-                  }
-                }}
+                value={lineThickness || DEFAULT_VALUES.MIN_LINE_THICKNESS}
+                onChange={(e) => setLineThickness(Number(e.target.value))}
                 className="w-full"
               />
             </div>

@@ -34,6 +34,11 @@ export const updateDescendants = (
     const childSpiral = updatedSpirals[rel.childIndex];
     const parentSpiral = updatedSpirals[rel.parentIndex];
 
+    // Skip if either spiral is missing
+    if (!childSpiral || !parentSpiral) {
+      return;
+    }
+
     // Generate points along parent spiral
     const parentPoints = generateSpiralPointsByType(
       parentSpiral.outer,
@@ -44,9 +49,20 @@ export const updateDescendants = (
       parentSpiral
     );
 
-    // Find point on parent spiral at stored t value
-    const index = Math.floor(rel.t * (parentPoints.length - 1));
+    // Ensure we have points and valid t value
+    if (!parentPoints.length) {
+      return;
+    }
+    const index = Math.min(
+      Math.floor(rel.t * (parentPoints.length - 1)),
+      parentPoints.length - 1
+    );
     const attachPoint = parentPoints[index];
+
+    // Skip if we couldn't find an attachment point
+    if (!attachPoint) {
+      return;
+    }
 
     // Calculate new position maintaining relative angle
     const parentAngle = Math.atan2(
