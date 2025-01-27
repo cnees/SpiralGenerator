@@ -34,6 +34,7 @@ export const SpiralGenerator = () => {
   const [isDragging, setIsDragging] = useState(false);
   const [hoveredEnd, setHoveredEnd] = useState(null);
   const [spiralRelationships, setSpiralRelationships] = useState([]);
+  const [clickedSegment, setClickedSegment] = useState(null);
 
   const SPIRAL_TYPES = {
     LINE: "line",
@@ -1205,10 +1206,12 @@ export const SpiralGenerator = () => {
       const segmentThickness =
         startThickness * Math.pow(taperT, sizeFactor) + 0.5;
 
-      if (
-        points.length > 0 &&
-        points.every((p) => !isNaN(p.x) && !isNaN(p.y))
-      ) {
+      const hasValidPoints = (points) => {
+        if (points.length === 0) return false;
+        return points.every((p) => !isNaN(p.x) && !isNaN(p.y));
+      };
+
+      if (hasValidPoints(points)) {
         segments.push({
           points: [points[i], points[i + 1]],
           thickness: segmentThickness,
@@ -1282,6 +1285,7 @@ export const SpiralGenerator = () => {
     previewThickness,
     isSelected,
     index,
+    stroke = "black",
   }) => {
     const isDescendant = isDescendantOfSelected(index);
 
@@ -1299,16 +1303,39 @@ export const SpiralGenerator = () => {
 
     return (
       <>
-        {segments.map((segment, segIndex) => (
-          <path
-            key={segIndex}
-            d={`M ${segment.points.map((p) => `${p.x},${p.y}`).join(" L ")}`}
-            fill="none"
-            stroke={isSelected || isDescendant ? "orange" : "blue"}
-            strokeWidth={segment.thickness}
-            opacity={opacity}
-          />
-        ))}
+        {segments.map((segment, segIndex) => {
+          const isClickedSegment =
+            clickedSegment &&
+            clickedSegment.spiralIndex === index &&
+            clickedSegment.segmentIndex === segIndex;
+
+          return (
+            <path
+              key={segIndex}
+              d={`M ${segment.points.map((p) => `${p.x},${p.y}`).join(" L ")}`}
+              fill="none"
+              stroke={
+                isClickedSegment
+                  ? "#ff69b4"
+                  : isSelected || isDescendant
+                  ? "orange"
+                  : stroke
+              }
+              strokeWidth={segment.thickness}
+              opacity={opacity}
+              onClick={(e) => {
+                e.stopPropagation();
+                setClickedSegment({
+                  spiralIndex: index,
+                  segmentIndex: segIndex,
+                  thickness: segment.thickness,
+                });
+                console.log("Clicked segment thickness:", segment.thickness);
+              }}
+              style={{ cursor: "pointer" }}
+            />
+          );
+        })}
 
         {/* Add endpoint indicators only for selected spiral */}
         {selectedTool === "select" && isSelected && (
@@ -1405,6 +1432,12 @@ export const SpiralGenerator = () => {
 
     const index = Math.round(t * (points.length - 1));
     return points[index];
+  };
+
+  const handleSvgClick = (e) => {
+    if (e.target.tagName === "svg") {
+      setClickedSegment(null);
+    }
   };
 
   return (
@@ -1680,6 +1713,7 @@ export const SpiralGenerator = () => {
               onMouseDown={handleMouseDown}
               onMouseMove={handleMouseMove}
               onMouseUp={handleMouseUp}
+              onClick={handleSvgClick}
               className="w-full h-full min-h-[800px] border rounded"
             >
               {spirals.map((spiral, index) => (
