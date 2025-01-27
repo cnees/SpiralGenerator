@@ -14,7 +14,7 @@ export const SpiralGenerator = () => {
   const [endpointSnapRadius, setEndpointSnapRadius] = useState(10);
   const [centerSnapRadius, setCenterSnapRadius] = useState(20);
   const [lastFlipTime, setLastFlipTime] = useState(0);
-  const [lineThickness, setLineThickness] = useState(2);
+  const [lineThickness, setLineThickness] = useState(10);
   const [defaultCoils, setDefaultCoils] = useState(3);
   const [heldKeys, setHeldKeys] = useState(new Set());
   const COIL_ADJUST_SPEED = 0.05;
@@ -121,6 +121,34 @@ export const SpiralGenerator = () => {
     return { start: extendedStart, end: extendedEnd };
   };
 
+  const getThicknessAtPoint = (point, spiral) => {
+    if (!spiral) return lineThickness;
+
+    const dx = point.x - spiral.center.x;
+    const dy = point.y - spiral.center.y;
+    const pointRadius = Math.sqrt(dx * dx + dy * dy);
+
+    const maxDx = spiral.outer.x - spiral.center.x;
+    const maxDy = spiral.outer.y - spiral.center.y;
+    const maxRadius = Math.sqrt(maxDx * maxDx + maxDy * maxDy);
+
+    const pointAngle = Math.atan2(dy, dx);
+    const baseAngle = Math.atan2(maxDy, maxDx);
+
+    let angleDiff = pointAngle - baseAngle;
+    if (spiral.clockwise) {
+      if (angleDiff > 0) angleDiff -= 2 * Math.PI;
+    } else {
+      if (angleDiff < 0) angleDiff += 2 * Math.PI;
+    }
+
+    const baseThickness = spiral.outer.thickness || lineThickness;
+    const t = Math.exp(angleDiff / (2 * Math.PI)) * (pointRadius / maxRadius);
+    const calculatedThickness = baseThickness * t;
+
+    return calculatedThickness;
+  };
+
   const findSnapPoint = (point, isInitialPoint = false) => {
     if (!snappingEnabled) return { point: null, spiral: null };
 
@@ -201,7 +229,7 @@ export const SpiralGenerator = () => {
       checkEndpoint(spiral.outer);
       checkEndpoint(spiral.center);
 
-      // Check along the spiral using the correct spiral type
+      // Check along the spiral
       const spiralPoints = generateSpiralPointsByType(
         spiral.outer,
         spiral.center,
@@ -211,7 +239,6 @@ export const SpiralGenerator = () => {
         spiral
       );
 
-      // Check each segment of the spiral
       for (let i = 0; i < spiralPoints.length - 1; i++) {
         const result = distanceToLineSegment(
           point,
@@ -234,32 +261,6 @@ export const SpiralGenerator = () => {
       spiral: closestSpiral,
       distance: closestDist,
     };
-  };
-
-  const getThicknessAtPoint = (point, spiral) => {
-    if (!spiral) return lineThickness;
-
-    const dx = point.x - spiral.center.x;
-    const dy = point.y - spiral.center.y;
-    const pointRadius = Math.sqrt(dx * dx + dy * dy);
-
-    const maxDx = spiral.outer.x - spiral.center.x;
-    const maxDy = spiral.outer.y - spiral.center.y;
-    const maxRadius = Math.sqrt(maxDx * maxDx + maxDy * maxDy);
-
-    const pointAngle = Math.atan2(dy, dx);
-    const baseAngle = Math.atan2(maxDy, maxDx);
-
-    let angleDiff = pointAngle - baseAngle;
-    if (spiral.clockwise) {
-      if (angleDiff > 0) angleDiff -= 2 * Math.PI;
-    } else {
-      if (angleDiff < 0) angleDiff += 2 * Math.PI;
-    }
-
-    const t = Math.exp(angleDiff / (2 * Math.PI)) * (pointRadius / maxRadius);
-
-    return (spiral.outer.thickness || lineThickness) * t + 0.5;
   };
 
   const handleMouseDown = useCallback(
@@ -322,69 +323,30 @@ export const SpiralGenerator = () => {
         setSelectedEnd(null);
       } else {
         if (snappingEnabled) {
-          // Find closest spiral and point
-          let closestDist = Infinity;
-          let closestSpiral = null;
-          let closestPoint = null;
+          const { point: snappedPoint, spiral: snapSpiral } = findSnapPoint(
+            point,
+            false
+          );
+          if (snappedPoint) {
+            console.log("Before calculating snap thickness:", {
+              snappedPoint,
+              snapSpiral,
+              spiralThickness: snapSpiral.outer.thickness,
+              defaultThickness: lineThickness,
+            });
 
-          for (const spiral of spirals) {
-            // Check center point
-            const dx = point.x - spiral.center.x;
-            const dy = point.y - spiral.center.y;
-            const distance = Math.sqrt(dx * dx + dy * dy);
+            const snapThickness = getThicknessAtPoint(snappedPoint, snapSpiral);
 
-            if (distance <= centerSnapRadius && distance < closestDist) {
-              closestDist = distance;
-              closestSpiral = spiral;
-              closestPoint = spiral.center;
-            }
+            console.log("After calculating snap thickness:", {
+              snapThickness,
+              finalThickness: snapThickness || lineThickness,
+            });
 
-            // Check outer point
-            const dxOuter = point.x - spiral.outer.x;
-            const dyOuter = point.y - spiral.outer.y;
-            const distanceOuter = Math.sqrt(
-              dxOuter * dxOuter + dyOuter * dyOuter
-            );
-
-            if (
-              distanceOuter <= endpointSnapRadius &&
-              distanceOuter < closestDist
-            ) {
-              closestDist = distanceOuter;
-              closestSpiral = spiral;
-              closestPoint = spiral.outer;
-            }
-
-            // Check points along the spiral
-            const spiralPoints = generateSpiralPoints(
-              spiral.outer,
-              spiral.center,
-              spiral.clockwise,
-              spiral.coils || 3
-            );
-
-            for (let i = 0; i < spiralPoints.length - 1; i++) {
-              const result = distanceToLineSegment(
-                point,
-                spiralPoints[i],
-                spiralPoints[i + 1]
-              );
-              if (
-                result.distance <= endpointSnapRadius &&
-                result.distance < closestDist
-              ) {
-                closestDist = result.distance;
-                closestSpiral = spiral;
-                closestPoint = result.point;
-              }
-            }
-          }
-
-          if (closestSpiral && closestPoint) {
-            setParentSpiral(closestSpiral);
+            setParentSpiral(snapSpiral);
+            console.log("Using snapthickness ", snapThickness);
             setStartPoint({
-              ...closestPoint,
-              thickness: lineThickness,
+              ...snappedPoint,
+              thickness: snapThickness,
             });
             setIsDrawing(true);
             return;
@@ -393,6 +355,7 @@ export const SpiralGenerator = () => {
 
         // If no snap point found, use raw point and clear parent spiral
         setParentSpiral(null);
+        console.log("No parent");
         setStartPoint({
           ...point,
           thickness: lineThickness,
@@ -406,6 +369,8 @@ export const SpiralGenerator = () => {
       spirals,
       endpointSnapRadius,
       centerSnapRadius,
+      lineThickness,
+      snappingEnabled,
     ]
   );
 
@@ -745,6 +710,7 @@ export const SpiralGenerator = () => {
         setIsDragging(false);
       } else {
         if (isDrawing && startPoint && currentPoint) {
+          console.log("Drawing  start current");
           const newSpiralIndex = spirals.length;
           setSpirals((prev) => [
             ...prev,
@@ -769,6 +735,7 @@ export const SpiralGenerator = () => {
 
           // If snapped to another spiral, store the relationship with angle
           if (snappedSpiral) {
+            console.log("IS snapped");
             const parentIndex = spirals.findIndex((s) => s === snappedSpiral);
             if (parentIndex !== -1) {
               // Calculate t value along parent spiral
@@ -1200,12 +1167,12 @@ export const SpiralGenerator = () => {
   const generateTaperedSpiralSegments = (
     outer,
     center,
-    clockwise = true,
-    segments = 50,
-    startThickness = 2,
-    coils = 3,
+    clockwise,
+    numSegments,
+    startThickness,
+    coils,
     taperToCenter = true,
-    type = SPIRAL_TYPES.LOGARITHMIC,
+    type,
     spiral
   ) => {
     const actualClockwise = coils >= 0 ? clockwise : !clockwise;
@@ -1222,22 +1189,19 @@ export const SpiralGenerator = () => {
     const sizeFactor = Math.max(1, 100 / distance);
 
     const result = [];
-    for (let i = segments; i >= 1; i--) {
-      const points = generateSpiralPointsByType(
-        outer,
-        center,
-        actualClockwise,
-        absoluteCoils,
-        type,
-        spiral
-      ).filter((_, index, arr) => {
-        const segStart = Math.floor(((i - 1) * arr.length) / segments);
-        const segEnd = Math.floor((i * arr.length) / segments);
-        return index >= segStart && index <= segEnd;
-      });
+    const points = generateSpiralPointsByType(
+      outer,
+      center,
+      actualClockwise,
+      absoluteCoils,
+      type,
+      spiral
+    );
 
-      const progress = i / segments;
-      const taperT = taperToCenter ? progress : 1 - progress;
+    const segments = [];
+    for (let i = 0; i < points.length - 1; i++) {
+      const t = i / (points.length - 1); // t goes from 0 to 1
+      const taperT = taperToCenter ? 1 - t : t; // Reverse t for tapering to center
       const segmentThickness =
         startThickness * Math.pow(taperT, sizeFactor) + 0.5;
 
@@ -1245,14 +1209,14 @@ export const SpiralGenerator = () => {
         points.length > 0 &&
         points.every((p) => !isNaN(p.x) && !isNaN(p.y))
       ) {
-        result.push({
-          points,
+        segments.push({
+          points: [points[i], points[i + 1]],
           thickness: segmentThickness,
         });
       }
     }
 
-    return result;
+    return segments;
   };
 
   // Add function to get all descendants of a spiral
